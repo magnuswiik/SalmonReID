@@ -158,6 +158,7 @@ def train(datapath, epochs, lr, device):
             images, targets = data
             
             images = list(image.to(device) for image in images)
+            targets = [{k: v.to(device) for k, v in t.items()} for t in targets]  # Move target tensors to the same device
             loss_dict = model(images, targets)
             losses = sum(loss for loss in loss_dict.values())
             loss_value = losses.item()
@@ -173,6 +174,7 @@ def train(datapath, epochs, lr, device):
         with torch.no_grad():
             for images, targets in data_loader_validation:
                 images = [image.to(device) for image in images]
+                targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
                 loss_dict = model(images, targets)
                 loss = sum(loss for loss in loss_dict.values())
                 validation_loss += loss.item()

@@ -21,6 +21,10 @@ def main():
     epochs = args.epochs
     datapath = args.datapath
     
+    # DATAPATH
+    # Mac: /Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett
+    # IDUN: /cluster/home/magnuwii/Helfisk_Deteksjonssett/
+    
     train_detector(datapath, epochs, lr, device)
 
 if __name__ == "__main__":

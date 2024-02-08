@@ -49,7 +49,7 @@ class SalmonDataset(torch.utils.data.Dataset):
         target = {}
         target["boxes"] = boxes_flattened
         target["labels"] = labels
-        target["image_id"] = idx
+        target["image_id"] = torch.tensor(idx)
         target["area"] = (boxes_flattened[:,2]-boxes_flattened[:,0])*(boxes_flattened[:,3]-boxes_flattened[:,1])
         target["iscrowd"] = torch.zeros((num_objs,), dtype=torch.int64)
 
