@@ -6,12 +6,9 @@ global device
 
 def main():
     
-    if torch.cuda.is_available():
-        device = torch.device('cuda')
-        print("GPU is available.")
-    else:
-        device = torch.device('cpu')
-        print("GPU not available, running on CPU.")
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    print(f"device: {device}")
         
     parser = argparse.ArgumentParser(description="Training FasterRCNN")
     
