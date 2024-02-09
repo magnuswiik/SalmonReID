@@ -12,9 +12,9 @@ def main():
         
     parser = argparse.ArgumentParser(description="Training FasterRCNN")
     
-    parser.add_argument('--lr', type=float, default=0.005, help='Specify initial learning rate for optimizer.')
+    parser.add_argument('--lr', type=float, default=0.05, help='Specify initial learning rate for optimizer.')
     parser.add_argument('--epochs', type=int, default=100, help='Specify number of training epochs.')
-    parser.add_argument('--datapath', type=str, default="/cluster/home/magnuwii/Helfisk_Deteksjonssett/", help='Path til datasett som skal brukes i trening.')
+    parser.add_argument('--datapath', type=str, default="/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/", help='Path til datasett som skal brukes i trening.')
     args = parser.parse_args()
     
     lr = args.lr
@@ -22,7 +22,7 @@ def main():
     datapath = args.datapath
     
     # DATAPATH
-    # Mac: /Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett
+    # Mac: /Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/
     # IDUN: /cluster/home/magnuwii/Helfisk_Deteksjonssett/
     
     train_detector(datapath, epochs, lr, device)

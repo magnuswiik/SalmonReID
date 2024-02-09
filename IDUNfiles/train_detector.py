@@ -124,17 +124,12 @@ def train(datapath, epochs, lr, device):
 
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(
-        params,
-        lr=lr,
-        momentum=0.9,
-        weight_decay=0.0005
-    )
-
-    # and a learning rate scheduler
+    optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
+    
+    # Learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
-        step_size=3,
+        step_size=20,
         gamma=0.1
     )
 
@@ -165,7 +160,6 @@ def train(datapath, epochs, lr, device):
             train_loss_per_epoch.append(loss_value)
             losses.backward()
             optimizer.step()
-            lr_scheduler.step()
 
             # update the loss value beside the progress bar for each iteration
             prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{epochs}| Loss: {loss_value:.4f}")
@@ -181,16 +175,22 @@ def train(datapath, epochs, lr, device):
         
         
         # Save metrics per epoch
-        lr_step_sizes.append(lr_scheduler.get_last_lr()[0])
+        lr_step_sizes.append(optimizer.param_groups[0]['lr'])
         train_loss_list.append(sum(loss for loss in train_loss_per_epoch)/len(train_loss_per_epoch))
         train_loss_hist.send(sum(loss for loss in train_loss_per_epoch)/len(train_loss_per_epoch))
         validation_loss /= len(data_loader_validation)
         validation_losses.append(validation_loss)
+        
+        # Change step size in optimizer
+        lr_scheduler.step()
 
 
     ### SAVING RESULTS
+    
+    # MAC: "models/model1/"
+    # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1"
 
-    MODELPATH = "models/" + "model1/"
+    MODELPATH = "models/model2/"
 
     if not os.path.exists(MODELPATH):
         os.mkdir(MODELPATH)
