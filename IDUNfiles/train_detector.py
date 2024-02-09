@@ -60,7 +60,7 @@ def make_datasets(datapath):
     dataset_validation = SalmonDataset(datapath)
     dataset_test = SalmonDataset(datapath)
 
-    data_indices = np.arange(0,len(dataset.imgs)*0.2, dtype=np.int16).tolist() # TODO: Fjern *0.2
+    data_indices = np.arange(0,len(dataset.imgs), dtype=np.int16).tolist() # TODO: Fjern *0.2
 
     indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
     data_indices = [idx for idx in data_indices if idx not in indices_test]
@@ -190,7 +190,7 @@ def train(datapath, epochs, lr, device):
     # MAC: "models/model1/"
     # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1"
 
-    MODELPATH = "models/model2/"
+    MODELPATH = "/cluster/home/magnuwii/masterthesis/models/model1"
 
     if not os.path.exists(MODELPATH):
         os.mkdir(MODELPATH)
