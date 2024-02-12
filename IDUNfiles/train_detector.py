@@ -188,9 +188,9 @@ def train(datapath, epochs, lr, device):
     ### SAVING RESULTS
     
     # MAC: "models/model1/"
-    # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1"
+    # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1/"
 
-    MODELPATH = "/cluster/home/magnuwii/masterthesis/models/model1"
+    MODELPATH = "/cluster/home/magnuwii/masterthesis/IDUNfiles/models/model1/"
 
     if not os.path.exists(MODELPATH):
         os.mkdir(MODELPATH)

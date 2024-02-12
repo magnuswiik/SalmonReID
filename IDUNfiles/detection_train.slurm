@@ -1,8 +1,9 @@
 #!/bin/sh
 #SBATCH --partition=GPUQ
+#SBATCH --gres=gpu:1
 #SBATCH --account=ie-iel
-#SBATCH --time=00:15:00
-#SBATCH --nodes=2              # 2 compute nodes
+#SBATCH --time=01:00:00
+#SBATCH --nodes=1              # 2 compute nodes
 #SBATCH --ntasks-per-node=1    # 1 mpi process each node
 #SBATCH --mem=16000            # 12GB - in megabytes
 #SBATCH --job-name="detector_train"
@@ -22,7 +23,7 @@ echo "We are using $SLURM_CPUS_ON_NODE cores per node"
 echo "Total of $SLURM_NTASKS cores"
 
 module purge
+module load cuDNN/8.4.1.50-CUDA-11.7.0
 module load Anaconda3/2022.10
 conda activate fisketrening
-pip install -r requirements.txt
 python main.py
