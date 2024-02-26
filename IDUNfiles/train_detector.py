@@ -1,4 +1,5 @@
 import os
+import utils
 from tqdm.auto import tqdm
 import torch
 import matplotlib.pyplot as plt
@@ -7,7 +8,9 @@ import random
 import numpy as np
 from SalmonDataset import SalmonDataset
 import torchvision
+from torchvision.ops import nms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 plt.style.use('ggplot')
 
 def collate_fn(batch):
@@ -60,7 +63,7 @@ def make_datasets(datapath):
     dataset_validation = SalmonDataset(datapath)
     dataset_test = SalmonDataset(datapath)
 
-    data_indices = np.arange(0,len(dataset.imgs), dtype=np.int16).tolist() # TODO: Fjern *0.2
+    data_indices = np.arange(0,len(dataset.imgs), dtype=np.int16).tolist()
 
     indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
     data_indices = [idx for idx in data_indices if idx not in indices_test]
@@ -121,6 +124,8 @@ def train(datapath, epochs, lr, device):
 
     # move model to the right device
     model.to(device)
+    
+    print(model)
 
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
@@ -130,7 +135,7 @@ def train(datapath, epochs, lr, device):
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
         step_size=20,
-        gamma=0.1
+        gamma=0.5
     )
 
     ### Training
@@ -190,7 +195,7 @@ def train(datapath, epochs, lr, device):
     # MAC: "models/model1/"
     # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1/"
 
-    MODELPATH = "/cluster/home/magnuwii/masterthesis/IDUNfiles/models/model1/"
+    MODELPATH = "/cluster/home/magnuwii/masterthesis/IDUNfiles/models/model2/"
 
     if not os.path.exists(MODELPATH):
         os.mkdir(MODELPATH)
@@ -199,5 +204,49 @@ def train(datapath, epochs, lr, device):
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
-    torch.save(model.state_dict(), MODELPATH + "model1.pt")
-    print("Model is saved at:" + MODELPATH + "model1.pt")
+    torch.save(model.state_dict(), MODELPATH + "model2.pt")
+    print("Model is saved at:" + MODELPATH + "model2.pt")
+
+
+def test(modelpath, datapath, device):
+    
+    classes = {0: 'background',
+               1: 'salmon'}
+    
+    model = get_detection_model(num_classes=2)
+    model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
+    model.eval().to(device)
+    
+    dataset_training, dataset_validation, dataset_test = make_datasets(datapath)
+    
+    # Random seed for reproducibility
+    g = torch.manual_seed(0)
+    
+    data_loader_test = torch.utils.data.DataLoader(
+        dataset_test,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        collate_fn=collate_fn,
+        generator=g
+    )
+    
+    prog_bar = tqdm(data_loader_test, total=len(data_loader_test))
+    
+    for i, data in enumerate(prog_bar):
+        
+        images, targets = data
+        
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) for k, v in t.items()} for t in targets]  # Move target tensors to the same device
+        preds = model(images)
+        
+        for pred in preds:
+            boxes = pred['boxes']
+            scores = pred['scores']
+            keep = nms(boxes, scores, iou_threshold=0.5)
+            pred['boxes'] = boxes[keep]
+            pred['scores'] = scores[keep]
+            pred['labels'] = pred['labels'][keep]
+        
+        utils.visualize_preds(images, preds)
