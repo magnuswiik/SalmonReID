@@ -68,7 +68,7 @@ keypoints = ['tailtop', 'tailbot', 'dorsalback', 'dorsalfront', 'pectoral', 'eye
 g = torch.manual_seed(0)
 
 # Define your custom dataset and data loader
-dataset = SalmonKeypointDataset(data_path2)
+dataset = SalmonKeypointDataset(data_path1)
 data_loader_training = torch.utils.data.DataLoader(
         dataset,
         batch_size=1,
@@ -88,7 +88,8 @@ model = getkeypointmodel(num_classes, num_keypoints)
 # Define the optimizer and learning rate scheduler
 params = [p for p in model.parameters() if p.requires_grad]
 optimizer = torch.optim.SGD(params, lr=0.001, momentum=0.9, weight_decay=0.0005)
-lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.5)
+lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
+
 
 
 # Test the model
@@ -135,13 +136,13 @@ model.to(device)
 #model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
 model.train()
 
-print(model)
+#print(model)
 
 train_loss_list = []
 lr_step_sizes = []
 validation_losses = []
 
-num_epochs = 1
+num_epochs = 100
 
 count = 0
 
@@ -167,7 +168,7 @@ for epoch in range(num_epochs):
         #tk2 = targets[1]['keypoints'].shape
         
         # Visualize the images and targets 
-        visualize_keypoints(images, targets)
+        # visualize_keypoints(images, targets)
 
         # Forward pass
         outputs = model(images, targets)
@@ -190,7 +191,7 @@ for epoch in range(num_epochs):
     # Print the loss for each epoch
     print(f'Epoch {epoch+1}/{num_epochs}, Loss: {losses.item()}')
     
-MODELPATH1 = "/cluster/home/magnuwii/masterthesis/IDUNfiles/keypointmodels/model1/"
+MODELPATH1 = "/cluster/home/magnuwii/masterthesis/IDUNfiles/keypointrcnn/models/model1/"
 MODELPATH2 = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/keypointmodels/model1/"
 
 if not os.path.exists(MODELPATH1):
@@ -201,4 +202,4 @@ df = pd.DataFrame(dict)
 df.to_csv(MODELPATH1 + 'metrics.csv', index=False)
 
 # Save the trained model
-torch.save(model.state_dict(), 'keypoint_rcnn_model.pt')
+torch.save(model.state_dict(), 'keypoint_rcnn_model_noresize.pt')
