@@ -34,7 +34,7 @@ def main():
         
     else:
         #test_detector('/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/models/model1/model1.pt', datapath, device)
-        detector_inference("/cluster/home/magnuwii/Helfisk_Deteksjonssett/", device)
+        detector_inference("/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/Images/", device)
 
 if __name__ == "__main__":
     main()

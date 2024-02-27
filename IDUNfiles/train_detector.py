@@ -9,7 +9,7 @@ import numpy as np
 from SalmonDataset import SalmonDataset
 import torchvision
 from torchvision.ops import nms
-from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights
+from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 plt.style.use('ggplot')
 
@@ -49,6 +49,16 @@ def get_detection_model(num_classes, weights=FasterRCNN_ResNet50_FPN_Weights):
     # get number of input features for the classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
     # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
+    
+    return model
+
+def get_mobile_detection_model(num_classes, weights=FasterRCNN_MobileNet_V3_Large_FPN_Weights):
+
+    model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(weights=weights)
+
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_classes)
     
     return model
@@ -120,13 +130,11 @@ def train(datapath, epochs, lr, device):
     )
 
     # get the model using our helper function
-    model = get_detection_model(num_classes)
+    model = get_mobile_detection_model(num_classes)
 
     # move model to the right device
     model.to(device)
     
-    print(model)
-
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
@@ -195,7 +203,7 @@ def train(datapath, epochs, lr, device):
     # MAC: "models/model1/"
     # IDUN: "/cluster/home/magnuwii/masterthesis/models/model1/"
 
-    MODELPATH = "/cluster/home/magnuwii/masterthesis/IDUNfiles/models/model2/"
+    MODELPATH = "/cluster/home/magnuwii/masterthesis/IDUNfiles/models/mobilemodel1/"
 
     if not os.path.exists(MODELPATH):
         os.mkdir(MODELPATH)
@@ -204,8 +212,8 @@ def train(datapath, epochs, lr, device):
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
-    torch.save(model.state_dict(), MODELPATH + "model2.pt")
-    print("Model is saved at:" + MODELPATH + "model2.pt")
+    torch.save(model.state_dict(), MODELPATH + "model1.pt")
+    print("Model is saved at:" + MODELPATH + "model1.pt")
 
 
 def test(modelpath, datapath, device):
