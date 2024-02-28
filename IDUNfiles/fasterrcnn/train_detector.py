@@ -165,11 +165,11 @@ def train_landmarks(datapath, epochs, lr, device):
 
     ### SAVING RESULTS
     
-    MODELPATH = "/landmark_models/model1/"
+    cwd = os.getcwd()
+    MODELPATH = cwd + "/landmark_models/model1/"
 
     if not os.path.exists(MODELPATH):
-        cwd = os.getcwd()
-        os.makedirs(cwd + MODELPATH)
+        os.makedirs(MODELPATH)
         
     dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
@@ -288,11 +288,11 @@ def train(datapath, epochs, lr, device):
 
     ### SAVING RESULTS
     
-    MODELPATH = "models/mobilemodel1/"
+    cwd = os.getcwd()
+    MODELPATH = cwd + "models/mobilemodel1/"
 
     if not os.path.exists(MODELPATH):
-        cwd = os.getcwd()
-        os.makedirs(cwd + MODELPATH)
+        os.makedirs(MODELPATH)
         
     dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes, 'validation_losses': validation_losses}
     df = pd.DataFrame(dict)
