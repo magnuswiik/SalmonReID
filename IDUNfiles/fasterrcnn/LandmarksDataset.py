@@ -23,7 +23,7 @@ class LandmarksDataset(Dataset):
     
     def __getitem__(self, idx):
         
-        labels_map = {'tailfin': 1, 'dorsalfin': 2, 'thorax': 3, 'pectoralfin': 4, 'eyeregion': 5, 'pectoral': 4} # Husk å fjerne pectoral og fikse datasett!
+        labels_map = {'tailfin': 1, 'dorsalfin': 2, 'thorax': 3, 'pectoralfin': 4, 'eyeregion': 5} # Husk å fjerne pectoral og fikse datasett!
 
         img_path = os.path.join(self.data_path, self.images[idx][:self.images[idx].find("_",0, 7)], self.images[idx])
         annot_path = os.path.join(self.data_path, self.annots[idx][:self.annots[idx].find("_",0, 7)], self.annots[idx])

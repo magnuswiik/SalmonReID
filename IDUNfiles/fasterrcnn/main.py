@@ -3,7 +3,9 @@ import argparse
 from train_detector import train as train_detector
 from train_detector import test as test_detector
 from train_detector import train_landmarks
-from inference_detector import inference as detector_inference
+from inference_detector import inference
+from inference_detector import inference_landmark
+
 
 def main():
     
@@ -35,7 +37,6 @@ def main():
     if cloud:
         if train:
             if task == 'salmon':
-                
                 datapath = '/cluster/home/magnuwii/Helfisk_Deteksjonssett/'
                 train_detector(datapath, epochs, lr, device)
             if task == 'landmarks':
@@ -43,7 +44,9 @@ def main():
                 train_landmarks(datapath, epochs, lr, device)
                 
         else:
-            detector_inference("/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/Images/", device)
+            datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/Images/"
+            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/mobilemodel1/model1.pt"
+            inference(datapath, modelpath, device)
     else:
         if train:
             if task == 'salmon':
@@ -54,7 +57,13 @@ def main():
                 train_landmarks(datapath, epochs, lr, device)
                 
         else:
-            detector_inference("/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/Images/", device)
+            '''datapath = '/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Landmark_Deteksjonssett/'
+            modelpath = '/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/landmark_models/model1/model1.pt'
+            inference_landmark(datapath, modelpath, device)'''
+            
+            datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/"
+            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/model2/model2.pt"
+            test_detector(datapath, modelpath, device)
 
 if __name__ == "__main__":
     main()

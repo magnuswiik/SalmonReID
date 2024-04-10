@@ -12,6 +12,8 @@ import torchvision
 from torchvision.ops import nms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 plt.style.use('ggplot')
+from torchmetrics.detection.mean_ap import MeanAveragePrecision
+from pprint import pprint
 
 def collate_fn(batch):
     """
@@ -180,6 +182,13 @@ def train_landmarks(datapath, epochs, lr, device):
 
 def train(datapath, epochs, lr, device):
     
+    # Create directory for model
+    cwd = os.getcwd()
+    MODELPATH = cwd + "/models/fasterrcnn/"
+
+    if not os.path.exists(MODELPATH):
+        os.makedirs(MODELPATH)
+    
     dataset_training, dataset_validation, dataset_test = make_datasets(datapath)
     
     # Random seed for reproducibility
@@ -191,7 +200,7 @@ def train(datapath, epochs, lr, device):
     # define training and validation data loaders
     data_loader_training = torch.utils.data.DataLoader(
         dataset_training,
-        batch_size=2,
+        batch_size=10,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn,
@@ -201,7 +210,7 @@ def train(datapath, epochs, lr, device):
     # define training and validation data loaders
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation,
-        batch_size=1,
+        batch_size=5,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn,
@@ -218,7 +227,8 @@ def train(datapath, epochs, lr, device):
     )
 
     # get the model using our helper function
-    model = get_mobile_detection_model(num_classes)
+    #model = get_mobile_detection_model(num_classes)
+    model = get_detection_model(num_classes)
 
     # move model to the right device
     model.to(device)
@@ -228,11 +238,9 @@ def train(datapath, epochs, lr, device):
     optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
     
     # Learning rate scheduler
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(
-        optimizer,
-        step_size=20,
-        gamma=0.5
-    )
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, factor=0.1, patience=5
+)
 
     ### Training
 
@@ -241,6 +249,7 @@ def train(datapath, epochs, lr, device):
     lr_step_sizes = []
     validation_losses = []
 
+    best_validation_loss = float('inf')  # Initialize with a large value
 
     for epoch in range(epochs):
         
@@ -282,27 +291,25 @@ def train(datapath, epochs, lr, device):
         validation_loss /= len(data_loader_validation)
         validation_losses.append(validation_loss)
         
+        # Save the model if it has the best validation loss
+        if validation_loss < best_validation_loss and epoch > 10:
+            best_validation_loss = validation_loss
+            best_model_path = os.path.join(MODELPATH, 'best_model.pt')
+            torch.save(model.state_dict(), best_model_path)
+            #print(f"Best model saved at: {best_model_path}")
+        
         # Change step size in optimizer
-        lr_scheduler.step()
+        lr_scheduler.step(validation_loss)
 
 
     ### SAVING RESULTS
-    
-    cwd = os.getcwd()
-    MODELPATH = cwd + "models/mobilemodel1/"
-
-    if not os.path.exists(MODELPATH):
-        os.makedirs(MODELPATH)
         
     dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes, 'validation_losses': validation_losses}
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
-    torch.save(model.state_dict(), MODELPATH + "model1.pt")
-    print("Model is saved at:" + MODELPATH + "model1.pt")
 
-
-def test(modelpath, datapath, device):
+def test(datapath, modelpath, device):
     
     classes = {0: 'background',
                1: 'salmon'}
@@ -327,20 +334,22 @@ def test(modelpath, datapath, device):
     
     prog_bar = tqdm(data_loader_test, total=len(data_loader_test))
     
+    targets_total = []
+    preds_total = []
+    
+    metric = MeanAveragePrecision(iou_type="bbox")
+
     for i, data in enumerate(prog_bar):
         
         images, targets = data
         
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]  # Move target tensors to the same device
-        preds = model(images)
+        with torch.no_grad():
+            preds = model(images)
         
-        for pred in preds:
-            boxes = pred['boxes']
-            scores = pred['scores']
-            keep = nms(boxes, scores, iou_threshold=0.5)
-            pred['boxes'] = boxes[keep]
-            pred['scores'] = scores[keep]
-            pred['labels'] = pred['labels'][keep]
+        metric.update(preds, targets)
         
-        utils.visualize_preds(images, preds)
+    pprint(metric.compute())
+
+    #utils.visualize_preds(images, preds)

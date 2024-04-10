@@ -3,11 +3,11 @@
 #SBATCH --gres=gpu:1
 #SBATCH --account=ie-iel
 #SBATCH --time=01:00:00
-#SBATCH --nodes=1              # 2 compute nodes
+#SBATCH --nodes=1              # 1 compute nodes
 #SBATCH --ntasks-per-node=1    # 1 mpi process each node
-#SBATCH --mem=16000            # 12GB - in megabytes
+#SBATCH --mem=16000            # 16GB - in megabytes
 #SBATCH --job-name="detector_train"
-#SBATCH --output=/cluster/home/magnuwii/masterthesis/IDUNfiles/output/slurm_out/detection_train.out
+#SBATCH --output=/cluster/home/magnuwii/masterthesis/IDUNfiles/fasterrrcnn/output/detection_train.out
 #SBATCH --mail-user=magnuwii@stud.ntnu.no
 #SBATCH --mail-type=ALL
 

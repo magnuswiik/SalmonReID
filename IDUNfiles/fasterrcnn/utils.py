@@ -3,6 +3,13 @@ import matplotlib.pyplot as plt
 import cv2
 import os, json
 
+def collate_fn(batch):
+    """
+    To handle the data loading as different images may have different number 
+    of objects and to handle varying size tensors as well.
+    """
+    return tuple(zip(*batch))
+
 def calc_iou(box1, box2):
     x1 = max(box1[0], box2[0])
     y1 = max(box1[1], box2[1])
@@ -40,26 +47,30 @@ def visualize_annot(imagepath):
     plt.axis('off')
     plt.show()
 
-def visualize_preds(images, predictions):
+def visualize_preds(task, image, predictions):
+    
+    if task == "salmon":
+        labels_map = {"background": 0, "salmon":1}
+    if task == "landmarks":
+        labels_map = {"background": 0, 'tailfin': 1, 'dorsalfin': 2, 'thorax': 3, 'pectoralfin': 4, 'eyeregion': 5, 'pectoral': 4} # Husk å fjerne pectoral og fikse datasett!
 
-    for i in range(len(images)):
-        image = images[i].cpu().numpy().transpose((1, 2, 0))
-        image = np.array(image * 255, dtype=np.uint8)
-        boxes = predictions[i]['boxes'].detach().cpu().numpy()
-        labels = predictions[i]['labels'].detach().cpu().numpy()
-        scores = predictions[i]['scores'].detach().cpu().numpy()
+    image = image.cpu().numpy().transpose((1, 2, 0))
+    image = np.array(image * 255, dtype=np.uint8)
+    boxes = predictions['boxes'].detach().cpu().numpy()
+    labels = predictions['labels'].detach().cpu().numpy()
+    scores = predictions['scores'].detach().cpu().numpy()
 
-        for j in range(len(boxes)):
-            x1, y1, x2, y2 = boxes[j]
-            cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
-            class_label = 'Salmon' if labels[j] == 1 else 'Background'
-            text = f'{class_label}: {scores[j]:.2f}'
-            cv2.putText(image, text, (int(x1), int(y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
-        
-        plt.figure()
-        plt.imshow(image)
-        plt.axis('off')
-        plt.show()
+    for j in range(len(boxes)):
+        x1, y1, x2, y2 = boxes[j]
+        cv2.rectangle(image, (int(x1), int(y1)), (int(x2), int(y2)), (0, 255, 0), 2)
+        class_label = list(labels_map.keys())[list(labels_map.values()).index(labels[j])]
+        text = f'{class_label}: {scores[j]:.2f}'
+        cv2.putText(image, text, (int(x1), int(y1 - 10)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+    
+    plt.figure()
+    plt.imshow(image)
+    plt.axis('off')
+    plt.show()
 
 def pred_to_labelme(pred, imagepath):
     
