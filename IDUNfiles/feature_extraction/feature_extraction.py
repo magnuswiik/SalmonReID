@@ -20,6 +20,7 @@ from captum.attr import IntegratedGradients
 from captum.attr import visualization as viz
 import torchvision.transforms as transforms
 from PIL import Image
+import random
 
 def collate_fn(batch):
     """
@@ -37,16 +38,68 @@ def get_resnet50_noclslayer(weights, modelpath=None):
     
     return model
 
+def make_datasets(datapath):
+    
+    # Random seed for reproducibility
+    random.seed(0)
+    
+    # Data augmentation
+    transform = transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(degrees=15),
+        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        #transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Assuming ImageNet normalization
+    ])
+
+    # use our dataset and defined transformations
+    dataset = ReidentificationDataset(datapath, "thorax", transform)
+    dataset_validation = ReidentificationDataset(datapath, "thorax", transform)
+    #dataset_test = ReidentificationDataset(datapath, "thorax", transform)
+
+    data_indices = np.arange(0,len(dataset.images), dtype=np.int16).tolist()
+
+    #indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
+    #data_indices = [idx for idx in data_indices if idx not in indices_test]
+
+    indices_validation = random.sample(data_indices, int(len(data_indices)*0.2))
+    data_indices = [idx for idx in data_indices if idx not in indices_validation]
+
+    indices_training = random.sample(data_indices, int(len(data_indices)))
+
+    # split the dataset in train and test set
+    dataset_training = torch.utils.data.Subset(dataset, indices_training) # 80% for training and validation
+    dataset_validation = torch.utils.data.Subset(dataset_validation, indices_validation)
+    #dataset_test = torch.utils.data.Subset(dataset_test, indices_test) # 20% for testing
+    
+    return dataset_training, dataset_validation #, dataset_test
+
 def train_extractor(datapath, epochs, lr, device):
     
-    dataset = ReidentificationDataset(datapath, "thorax")
+    cwd = os.getcwd()
+    MODELPATH = cwd + "/feature_extraction_models/newmodel/"
+
+    if not os.path.exists(MODELPATH):
+        os.makedirs(MODELPATH)
+    
+    dataset_training, dataset_validation = make_datasets(datapath)
     
     # Random seed for reproducibility
     g = torch.manual_seed(0)
     
     data_loader_training = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=1,
+        dataset_training,
+        batch_size=5,
+        shuffle=True,
+        num_workers=0,
+        collate_fn=collate_fn,
+        generator=g
+    )
+    
+    data_loader_validation = torch.utils.data.DataLoader(
+        dataset_validation,
+        batch_size=3,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn,
@@ -62,10 +115,17 @@ def train_extractor(datapath, epochs, lr, device):
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=20, gamma=0.1)
+          
+    # Learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer, factor=0.2, patience=10
+)
     
     train_loss_list = []
     lr_step_sizes = []
+    validation_losses = []
+
+    best_validation_loss = float('inf')
     
     for epoch in range(epochs):
         
@@ -76,9 +136,9 @@ def train_extractor(datapath, epochs, lr, device):
         for i, data in enumerate(prog_bar):
             imgs, targets = data
             optimizer.zero_grad()
-            anchor_outputs = model(imgs[0][0])
-            positive_outputs = model(imgs[0][1])
-            negative_outputs = model(imgs[0][2])
+            anchor_outputs = model(imgs[0][0].to(device))
+            positive_outputs = model(imgs[0][1].to(device))
+            negative_outputs = model(imgs[0][2].to(device))
             triplet_loss = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
             loss = triplet_loss(anchor_outputs, positive_outputs, negative_outputs)
             train_loss_per_epoch.append(loss.item())
@@ -86,23 +146,36 @@ def train_extractor(datapath, epochs, lr, device):
             optimizer.step()
             
             prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{epochs}| Loss: {loss:.4f}")
+            
+        validation_loss = 0.0
+        with torch.no_grad():
+            for images, targets in data_loader_validation:
+                images = [image.to(device) for triplet in images for image in triplet]
+                anchor_outputs = model(imgs[0][0].to(device))
+                positive_outputs = model(imgs[0][1].to(device))
+                negative_outputs = model(imgs[0][2].to(device))
+                triplet_loss_val = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
+                loss = triplet_loss_val(anchor_outputs, positive_outputs, negative_outputs)
+                validation_loss += loss.item()
         
         train_loss_list.append(sum(train_loss_per_epoch)/len(train_loss_per_epoch))
         lr_step_sizes.append(optimizer.param_groups[0]['lr'])
+        validation_loss /= len(data_loader_validation)
+        validation_losses.append(validation_loss)
         
-    cwd = os.getcwd()
-    MODELPATH = cwd + "/feature_extraction_models/model1/"
-
-    if not os.path.exists(MODELPATH):
-        os.makedirs(MODELPATH)
+        # Save the model if it has the best validation loss
+        if validation_loss < best_validation_loss and epoch > 10:
+            best_validation_loss = validation_loss
+            best_model_path = os.path.join(MODELPATH, 'best_model.pt')
+            torch.save(model.state_dict(), best_model_path)
+            #print(f"Best model saved at: {best_model_path}")
+        
+        lr_scheduler.step(validation_loss)
         
     dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
-
-    torch.save(model.state_dict(), MODELPATH + "model1.pt")
-    print("Model is saved at:" + MODELPATH + "model1.pt")
-                        
+            
 
 def extract_features(modelpath, datapath, device):
     
@@ -257,7 +330,13 @@ def explain_extractor(modelpath, datapath, device):
 def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
-    datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Prediksjoner_Identifikasjonssett/"
+    datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Landmark_Deteksjonssett_Trening/"
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    print(f"device: {device}")
+    
+    train_extractor(datapath, 250, 0.005, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
@@ -275,7 +354,7 @@ def main ():
     
     #train_extractor(datapath, 100, 0.005, "cpu")
     
-    explain_extractor(modelpath,"/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/fish9/thorax/fish9_thorax_GP020101_00005889.jpg", "cpu")
+    #explain_extractor(modelpath,"/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/fish9/thorax/fish9_thorax_GP020101_00005889.jpg", "cpu")
     
     
 if __name__ == "__main__":

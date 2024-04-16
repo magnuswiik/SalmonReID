@@ -62,7 +62,7 @@ def main():
             inference_landmark(datapath, modelpath, device)'''
             
             datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/"
-            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/model2/model2.pt"
+            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/newmodel/best_model.pt"
             test_detector(datapath, modelpath, device)
 
 if __name__ == "__main__":

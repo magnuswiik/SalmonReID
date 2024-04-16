@@ -200,7 +200,7 @@ def train(datapath, epochs, lr, device):
     # define training and validation data loaders
     data_loader_training = torch.utils.data.DataLoader(
         dataset_training,
-        batch_size=10,
+        batch_size=5,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn,
@@ -210,7 +210,7 @@ def train(datapath, epochs, lr, device):
     # define training and validation data loaders
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation,
-        batch_size=5,
+        batch_size=3,
         shuffle=True,
         num_workers=0,
         collate_fn=collate_fn,
@@ -239,7 +239,7 @@ def train(datapath, epochs, lr, device):
     
     # Learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=0.1, patience=5
+    optimizer, factor=0.2, patience=10
 )
 
     ### Training
