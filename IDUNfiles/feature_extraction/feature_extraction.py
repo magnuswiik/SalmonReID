@@ -1,5 +1,5 @@
 import torch
-from torchvision.models.resnet import resnet50, ResNet50_Weights
+from torchvision.models.resnet import resnet50, resnet101, ResNet50_Weights, ResNet101_Weights
 from torch.nn import TripletMarginLoss
 import os, re
 import pandas as pd
@@ -32,6 +32,15 @@ def collate_fn(batch):
 def get_resnet50_noclslayer(weights, modelpath=None):
     
     model = resnet50(weights)
+    
+    # Remove classification layer
+    model = torch.nn.Sequential(*(list(model.children())[:-1]))
+    
+    return model
+
+def get_resnet101_noclslayer(weights, modelpath=None):
+    
+    model = resnet101(weights)
     
     # Remove classification layer
     model = torch.nn.Sequential(*(list(model.children())[:-1]))
@@ -92,7 +101,7 @@ def train_extractor(datapath, epochs, lr, device):
         dataset_training,
         batch_size=5,
         shuffle=True,
-        num_workers=0,
+        num_workers=5,
         collate_fn=collate_fn,
         generator=g
     )
@@ -101,12 +110,12 @@ def train_extractor(datapath, epochs, lr, device):
         dataset_validation,
         batch_size=3,
         shuffle=True,
-        num_workers=0,
+        num_workers=5,
         collate_fn=collate_fn,
         generator=g
     )
     
-    model = get_resnet50_noclslayer(ResNet50_Weights)
+    model = get_resnet101_noclslayer(ResNet101_Weights)
     model.train()
     
     # move model to the right device
@@ -118,7 +127,7 @@ def train_extractor(datapath, epochs, lr, device):
           
     # Learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=0.2, patience=10
+    optimizer, factor=0.2, patience=5
 )
     
     train_loss_list = []
@@ -172,7 +181,7 @@ def train_extractor(datapath, epochs, lr, device):
         
         lr_scheduler.step(validation_loss)
         
-    dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes}
+    dict = {'training_loss': train_loss_list, 'validation_loss':validation_losses, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
             

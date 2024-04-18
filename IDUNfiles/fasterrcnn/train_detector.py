@@ -202,7 +202,7 @@ def train(datapath, epochs, lr, device):
         dataset_training,
         batch_size=5,
         shuffle=True,
-        num_workers=0,
+        num_workers=5,
         collate_fn=collate_fn,
         generator=g
     )
@@ -212,7 +212,7 @@ def train(datapath, epochs, lr, device):
         dataset_validation,
         batch_size=3,
         shuffle=True,
-        num_workers=0,
+        num_workers=5,
         collate_fn=collate_fn,
         generator=g
     )
@@ -304,7 +304,7 @@ def train(datapath, epochs, lr, device):
 
     ### SAVING RESULTS
         
-    dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes, 'validation_losses': validation_losses}
+    dict = {'training_loss': train_loss_list,  'validation_loss': validation_losses, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
