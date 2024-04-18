@@ -339,7 +339,7 @@ def explain_extractor(modelpath, datapath, device):
 def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
-    datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Landmark_Deteksjonssett_Trening/"
+    datapath = "/cluster/home/magnuwii/Helfisk_Landmark_Deteksjonssett_Trening/"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
