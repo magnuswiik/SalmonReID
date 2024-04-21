@@ -54,12 +54,9 @@ def make_datasets(datapath):
     
     # Data augmentation
     transform = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(degrees=15),
-        transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
         #transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])  # Assuming ImageNet normalization
     ])
 
     # use our dataset and defined transformations
@@ -99,8 +96,8 @@ def train_extractor(datapath, epochs, lr, device):
     
     data_loader_training = torch.utils.data.DataLoader(
         dataset_training,
-        batch_size=5,
-        shuffle=True,
+        batch_size=25,
+        shuffle=False,
         num_workers=5,
         collate_fn=collate_fn,
         generator=g
@@ -108,8 +105,8 @@ def train_extractor(datapath, epochs, lr, device):
     
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation,
-        batch_size=3,
-        shuffle=True,
+        batch_size=25,
+        shuffle=False,
         num_workers=5,
         collate_fn=collate_fn,
         generator=g
@@ -339,13 +336,14 @@ def explain_extractor(modelpath, datapath, device):
 def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
+    datapath_mac = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/"
     datapath = "/cluster/home/magnuwii/Helfisk_Landmark_Deteksjonssett_Trening/"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print(f"device: {device}")
     
-    train_extractor(datapath, 250, 0.005, device)
+    train_extractor(datapath_mac, 250, 0.005, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
