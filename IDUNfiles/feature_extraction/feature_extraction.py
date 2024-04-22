@@ -380,9 +380,10 @@ def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
     datapath_mac = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/"
-    datapath = "/cluster/home/magnuwii/Identifikasjonssett/"
+    datapath_idun = "/cluster/home/magnuwii/Identifikasjonssett/"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    path = datapath_idun if torch.cuda.is_available() else datapath_mac
     
     print(f"device: {device}")
     
@@ -408,7 +409,7 @@ def main ():
             'hue':0.1}
     }
     
-    train_extractor(datapath_mac, hyperparameters, device)
+    train_extractor(path, hyperparameters, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
