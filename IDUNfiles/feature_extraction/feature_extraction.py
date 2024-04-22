@@ -23,6 +23,26 @@ from PIL import Image
 import random
 from datetime import datetime
 
+def create_results_folder(base_path, prefix="featuremodel"):
+    # Create a timestamp for uniqueness
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Construct folder name with prefix and timestamp
+    folder_name = f"{prefix}_{timestamp}"
+    # Join with base path to create the full path
+    folder_path = os.path.join(base_path, folder_name)
+    # Create the folder
+    os.makedirs(folder_path)
+    return folder_path
+
+def save_hyperparameters(folder_path, hyperparameters):
+    # Define the file path for saving hyperparameters
+    file_path = os.path.join(folder_path, "hyperparameters.txt")
+    # Open the file in write mode
+    with open(file_path, "w") as file:
+        # Write each hyperparameter to the file
+        for key, value in hyperparameters.items():
+            file.write(f"{key}: {value}\n")
+
 def collate_fn(batch):
     """
     To handle the data loading as different images may have different number 
@@ -39,17 +59,6 @@ def get_resnet50_noclslayer(weights, modelpath=None):
     
     return model
 
-def create_results_folder(base_path, prefix="featuremodel"):
-    # Create a timestamp for uniqueness
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    # Construct folder name with prefix and timestamp
-    folder_name = f"{prefix}_{timestamp}"
-    # Join with base path to create the full path
-    folder_path = os.path.join(base_path, folder_name)
-    # Create the folder
-    os.makedirs(folder_path)
-    return folder_path
-
 def get_resnet101_noclslayer(weights, modelpath=None):
     
     model = resnet101(weights)
@@ -59,14 +68,19 @@ def get_resnet101_noclslayer(weights, modelpath=None):
     
     return model
 
-def make_datasets(datapath):
+def make_datasets(datapath, hyperparameters):
+    
+    BRIGHT = hyperparameters['data_augmentation']['brightness']
+    CONTR = hyperparameters['data_augmentation']['contrast']
+    HUE = hyperparameters['data_augmentation']['hue']
+    SAT = hyperparameters['data_augmentation']['saturation']
     
     # Random seed for reproducibility
     random.seed(0)
     
     # Data augmentation
     transform = transforms.Compose([
-        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        transforms.ColorJitter(brightness=BRIGHT, contrast=CONTR, saturation=SAT, hue=HUE),
         #transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         transforms.ToTensor(),
     ])
@@ -93,21 +107,32 @@ def make_datasets(datapath):
     
     return dataset_training, dataset_validation #, dataset_test
 
-def train_extractor(datapath, epochs, lr, device):
+def train_extractor(datapath, hyperparameters, device):
     
     cwd = os.getcwd()
     MODELPATH = cwd + "/feature_extraction_models/newmodel/"
 
     folder_path = create_results_folder(MODELPATH)
     
-    dataset_training, dataset_validation = make_datasets(datapath)
+    save_hyperparameters(folder_path, hyperparameters)
+    
+    # Get hyperparameters
+    EPOCHS = hyperparameters['epochs']
+    BS = hyperparameters['batch_size']
+    LR = hyperparameters['optimizer']['lr']
+    MOM = hyperparameters['optimizer']['momentum']
+    WD = hyperparameters['optimizer']['momentum']
+    FACTOR = hyperparameters['lr_scheduler']['factor']
+    PATIENCE = hyperparameters['lr_scheduler']['patience']
+    
+    dataset_training, dataset_validation = make_datasets(datapath, hyperparameters)
     
     # Random seed for reproducibility
     g = torch.manual_seed(0)
     
     data_loader_training = torch.utils.data.DataLoader(
         dataset_training,
-        batch_size=25,
+        batch_size=BS,
         shuffle=False,
         num_workers=5,
         collate_fn=collate_fn,
@@ -116,7 +141,7 @@ def train_extractor(datapath, epochs, lr, device):
     
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation,
-        batch_size=25,
+        batch_size=BS,
         shuffle=False,
         num_workers=5,
         collate_fn=collate_fn,
@@ -131,11 +156,11 @@ def train_extractor(datapath, epochs, lr, device):
     
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
+    optimizer = torch.optim.SGD(params, lr=LR, momentum=MOM, weight_decay=WD)
           
     # Learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=0.2, patience=5
+    optimizer, factor=FACTOR, patience=PATIENCE
 )
     
     train_loss_list = []
@@ -144,7 +169,7 @@ def train_extractor(datapath, epochs, lr, device):
 
     best_validation_loss = float('inf')
     
-    for epoch in range(epochs):
+    for epoch in range(EPOCHS):
         
         train_loss_per_epoch = []
         
@@ -162,7 +187,7 @@ def train_extractor(datapath, epochs, lr, device):
             loss.backward()
             optimizer.step()
             
-            prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{epochs}| Loss: {loss:.4f}")
+            prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{EPOCHS}| Loss: {loss:.4f}")
             
         validation_loss = 0.0
         with torch.no_grad():
@@ -192,6 +217,7 @@ def train_extractor(datapath, epochs, lr, device):
     dict = {'training_loss': train_loss_list, 'validation_loss':validation_losses, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
     df.to_csv(os.path.join(folder_path, 'metrics.csv'), index=False)
+    
             
 
 def extract_features(modelpath, datapath, device):
@@ -354,7 +380,29 @@ def main ():
     
     print(f"device: {device}")
     
-    train_extractor(datapath, 250, 0.005, device)
+    hyperparameters = {
+        'model': 'ResNet101',
+        'epochs': 800,
+        'optimizer': {
+                'type': 'sgd',
+                'lr': 0.005,
+                'momentum': 0.9,
+                'weight_decay': 0.0005},
+        'batch_size': 25,
+        'lr_scheduler': {
+            'type': 'reduce_lr_on_plateau',
+            'factor': 0.2,
+            'patience': 5
+        },
+        'data_augmentation': {
+            'type': 'color_jitter',
+            'brightness': 0.1,
+            'contrast': 0.1,
+            'saturation': 0.1,
+            'hue':0.1}
+    }
+    
+    train_extractor(datapath, hyperparameters, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
