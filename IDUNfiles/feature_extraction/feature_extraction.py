@@ -177,13 +177,14 @@ def train_extractor(datapath, hyperparameters, device):
         prog_bar = tqdm(data_loader_training, total=len(data_loader_training))
         
         for i, data in enumerate(prog_bar):
-            imgs, targets = data
+            images, targets = data
+            images = [[anchor.to(device), positive.to(device), negative.to(device)] for anchor, positive, negative in images]
             optimizer.zero_grad()
             loss = 0
-            for anchor, positive, negative in imgs:
-                anchor_outputs = model(anchor.to(device))
-                positive_outputs = model(positive.to(device))
-                negative_outputs = model(negative.to(device))
+            for anchor, positive, negative in images:
+                anchor_outputs = model(anchor)
+                positive_outputs = model(positive)
+                negative_outputs = model(negative)
                 triplet_loss = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
                 loss += triplet_loss(anchor_outputs, positive_outputs, negative_outputs)
             train_loss_per_epoch.append(loss.item())
@@ -195,13 +196,15 @@ def train_extractor(datapath, hyperparameters, device):
         validation_loss = 0.0
         with torch.no_grad():
             for images, targets in data_loader_validation:
-                images = [image.to(device) for triplet in images for image in triplet]
-                anchor_outputs = model(imgs[0][0].to(device))
-                positive_outputs = model(imgs[0][1].to(device))
-                negative_outputs = model(imgs[0][2].to(device))
-                triplet_loss_val = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
-                loss = triplet_loss_val(anchor_outputs, positive_outputs, negative_outputs)
-                validation_loss += loss.item()
+                images = [[anchor.to(device), positive.to(device), negative.to(device)] for anchor, positive, negative in images]
+                val_loss = 0
+                for anchor, positive, negative in images:
+                    anchor_outputs = model(anchor)
+                    positive_outputs = model(positive)
+                    negative_outputs = model(negative)
+                    triplet_loss_val = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
+                    val_loss += triplet_loss_val(anchor_outputs, positive_outputs, negative_outputs)
+                validation_loss += val_loss.item()
         
         train_loss_list.append(sum(train_loss_per_epoch)/len(train_loss_per_epoch))
         lr_step_sizes.append(optimizer.param_groups[0]['lr'])
