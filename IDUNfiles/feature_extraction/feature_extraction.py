@@ -124,6 +124,7 @@ def train_extractor(datapath, hyperparameters, device):
     WD = hyperparameters['optimizer']['momentum']
     FACTOR = hyperparameters['lr_scheduler']['factor']
     PATIENCE = hyperparameters['lr_scheduler']['patience']
+    NWORKERS = 5 if torch.cuda.is_available() else 0
     
     dataset_training, dataset_validation = make_datasets(datapath, hyperparameters)
     
@@ -134,7 +135,7 @@ def train_extractor(datapath, hyperparameters, device):
         dataset_training,
         batch_size=BS,
         shuffle=False,
-        num_workers=5,
+        num_workers=NWORKERS,
         collate_fn=collate_fn,
         generator=g
     )
@@ -143,7 +144,7 @@ def train_extractor(datapath, hyperparameters, device):
         dataset_validation,
         batch_size=BS,
         shuffle=False,
-        num_workers=5,
+        num_workers=NWORKERS,
         collate_fn=collate_fn,
         generator=g
     )
@@ -178,11 +179,13 @@ def train_extractor(datapath, hyperparameters, device):
         for i, data in enumerate(prog_bar):
             imgs, targets = data
             optimizer.zero_grad()
-            anchor_outputs = model(imgs[0][0].to(device))
-            positive_outputs = model(imgs[0][1].to(device))
-            negative_outputs = model(imgs[0][2].to(device))
-            triplet_loss = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
-            loss = triplet_loss(anchor_outputs, positive_outputs, negative_outputs)
+            loss = 0
+            for anchor, positive, negative in imgs:
+                anchor_outputs = model(anchor.to(device))
+                positive_outputs = model(positive.to(device))
+                negative_outputs = model(negative.to(device))
+                triplet_loss = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
+                loss += triplet_loss(anchor_outputs, positive_outputs, negative_outputs)
             train_loss_per_epoch.append(loss.item())
             loss.backward()
             optimizer.step()
@@ -382,7 +385,7 @@ def main ():
     
     hyperparameters = {
         'model': 'ResNet101',
-        'epochs': 800,
+        'epochs': 250,
         'optimizer': {
                 'type': 'sgd',
                 'lr': 0.005,
@@ -402,7 +405,7 @@ def main ():
             'hue':0.1}
     }
     
-    train_extractor(datapath, hyperparameters, device)
+    train_extractor(datapath_mac, hyperparameters, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
