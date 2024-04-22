@@ -21,6 +21,7 @@ from captum.attr import visualization as viz
 import torchvision.transforms as transforms
 from PIL import Image
 import random
+from datetime import datetime
 
 def collate_fn(batch):
     """
@@ -37,6 +38,17 @@ def get_resnet50_noclslayer(weights, modelpath=None):
     model = torch.nn.Sequential(*(list(model.children())[:-1]))
     
     return model
+
+def create_results_folder(base_path, prefix="featuremodel"):
+    # Create a timestamp for uniqueness
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # Construct folder name with prefix and timestamp
+    folder_name = f"{prefix}_{timestamp}"
+    # Join with base path to create the full path
+    folder_path = os.path.join(base_path, folder_name)
+    # Create the folder
+    os.makedirs(folder_path)
+    return folder_path
 
 def get_resnet101_noclslayer(weights, modelpath=None):
     
@@ -86,8 +98,7 @@ def train_extractor(datapath, epochs, lr, device):
     cwd = os.getcwd()
     MODELPATH = cwd + "/feature_extraction_models/newmodel/"
 
-    if not os.path.exists(MODELPATH):
-        os.makedirs(MODELPATH)
+    folder_path = create_results_folder(MODELPATH)
     
     dataset_training, dataset_validation = make_datasets(datapath)
     
@@ -172,7 +183,7 @@ def train_extractor(datapath, epochs, lr, device):
         # Save the model if it has the best validation loss
         if validation_loss < best_validation_loss and epoch > 10:
             best_validation_loss = validation_loss
-            best_model_path = os.path.join(MODELPATH, 'best_model.pt')
+            best_model_path = os.path.join(folder_path, 'best_model.pt')
             torch.save(model.state_dict(), best_model_path)
             #print(f"Best model saved at: {best_model_path}")
         
@@ -180,7 +191,7 @@ def train_extractor(datapath, epochs, lr, device):
         
     dict = {'training_loss': train_loss_list, 'validation_loss':validation_losses, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
-    df.to_csv(MODELPATH + 'metrics.csv', index=False)
+    df.to_csv(os.path.join(folder_path, 'metrics.csv'), index=False)
             
 
 def extract_features(modelpath, datapath, device):
@@ -337,13 +348,13 @@ def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
     datapath_mac = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/"
-    datapath = "/cluster/home/magnuwii/Helfisk_Landmark_Deteksjonssett_Trening/"
+    datapath = "/cluster/home/magnuwii/Identifikasjonssett/"
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
     print(f"device: {device}")
     
-    train_extractor(datapath_mac, 250, 0.005, device)
+    train_extractor(datapath, 250, 0.005, device)
     
     #features = extract_features(modelpath, datapath, "cpu")
     
