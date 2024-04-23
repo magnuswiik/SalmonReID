@@ -337,7 +337,7 @@ def test(datapath, modelpath, device):
     targets_total = []
     preds_total = []
     
-    metric = MeanAveragePrecision(iou_type="bbox")
+    metrics = MeanAveragePrecision(iou_type="bbox")
 
     for i, data in enumerate(prog_bar):
         
@@ -348,8 +348,13 @@ def test(datapath, modelpath, device):
         with torch.no_grad():
             preds = model(images)
         
-        metric.update(preds, targets)
+        metrics.update(preds, targets)
         
-    pprint(metric.compute())
+    pprint(metrics.compute())
+    
+    metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/newmodel/metrics.txt"
+    
+    with open(metrics_path, "w") as f:
+        pprint(metrics, stream=f)
 
     #utils.visualize_preds(images, preds)

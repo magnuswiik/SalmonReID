@@ -107,6 +107,18 @@ def make_datasets(datapath, hyperparameters):
     
     return dataset_training, dataset_validation #, dataset_test
 
+def visualize_triplets(anchor, positive, negative):
+    
+    # Visualize the images
+    fig, axs = plt.subplots(1, 3, figsize=(10, 3))
+    axs[0].imshow(anchor.squeeze(0).cpu().permute(1, 2, 0))  # Convert back to CPU and permute dimensions
+    axs[0].set_title('Anchor')
+    axs[1].imshow(positive.squeeze(0).cpu().permute(1, 2, 0))
+    axs[1].set_title('Positive')
+    axs[2].imshow(negative.squeeze(0).cpu().permute(1, 2, 0))
+    axs[2].set_title('Negative')
+    plt.show()
+
 def train_extractor(datapath, hyperparameters, device):
     
     cwd = os.getcwd()
@@ -256,8 +268,7 @@ def extract_features(modelpath, datapath, device):
                             output_flattened = np.append(output_flattened, [fish_id, landmark_id])
                             df.loc[len(df)] = output_flattened
                         
-    return df
-    
+    return df 
     
 def analyze_data_pca(df):
     
@@ -375,7 +386,6 @@ def explain_extractor(modelpath, datapath, device):
                                  title='Integrated gradients')
     
     
-
 def main ():
     
     modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
@@ -403,10 +413,10 @@ def main ():
         },
         'data_augmentation': {
             'type': 'color_jitter',
-            'brightness': 0.1,
-            'contrast': 0.1,
-            'saturation': 0.1,
-            'hue':0.1}
+            'brightness': 0,
+            'contrast': 0,
+            'saturation': 0,
+            'hue':0}
     }
     
     train_extractor(path, hyperparameters, device)
