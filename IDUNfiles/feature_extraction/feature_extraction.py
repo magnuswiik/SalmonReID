@@ -70,10 +70,14 @@ def get_resnet101_noclslayer(weights, modelpath=None):
 
 def make_datasets(datapath, hyperparameters):
     
-    BRIGHT = hyperparameters['data_augmentation']['brightness']
-    CONTR = hyperparameters['data_augmentation']['contrast']
-    HUE = hyperparameters['data_augmentation']['hue']
-    SAT = hyperparameters['data_augmentation']['saturation']
+    BRIGHT = hyperparameters['data_augmentation']['color_jitter']['brightness']
+    CONTR = hyperparameters['data_augmentation']['color_jitter']['contrast']
+    HUE = hyperparameters['data_augmentation']['color_jitter']['hue']
+    SAT = hyperparameters['data_augmentation']['color_jitter']['saturation']
+    
+    SIZE = hyperparameters['data_augmentation']['random_resized_crop']['size']
+    SCALE = hyperparameters['data_augmentation']['random_resized_crop']['scale']
+    RATIO = hyperparameters['data_augmentation']['random_resized_crop']['ratio']
     
     # Random seed for reproducibility
     random.seed(0)
@@ -81,7 +85,7 @@ def make_datasets(datapath, hyperparameters):
     # Data augmentation
     transform = transforms.Compose([
         transforms.ColorJitter(brightness=BRIGHT, contrast=CONTR, saturation=SAT, hue=HUE),
-        transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.RandomResizedCrop(size=SIZE, scale=SCALE, ratio=RATIO),
         transforms.ToTensor(),
     ])
 
@@ -416,11 +420,11 @@ def main ():
                 'brightness': 0,
                 'contrast': 0,
                 'saturation': 0,
-                'hue':0},
+                'hue': 0},
             'random_resized_crop':{
-                'size':(224, 224), 
-                'scale':(0.8, 1.0),
-                'ratio':(0.9, 1.1)
+                'size': (224, 224), 
+                'scale': (0.8, 1.0),
+                'ratio': (0.9, 1.1)
             }}
             
     }
