@@ -399,10 +399,10 @@ def main ():
     
     hyperparameters = {
         'model': 'ResNet101',
-        'epochs': 250,
+        'epochs': 25,
         'optimizer': {
                 'type': 'sgd',
-                'lr': 0.005,
+                'lr': 0.0005,
                 'momentum': 0.9,
                 'weight_decay': 0.0005},
         'batch_size': 25,
@@ -412,11 +412,17 @@ def main ():
             'patience': 5
         },
         'data_augmentation': {
-            'type': 'color_jitter',
-            'brightness': 0,
-            'contrast': 0,
-            'saturation': 0,
-            'hue':0}
+            'color_jitter': {
+                'brightness': 0,
+                'contrast': 0,
+                'saturation': 0,
+                'hue':0},
+            'random_resized_crop':{
+                'size':(224, 224), 
+                'scale':(0.8, 1.0),
+                'ratio':(0.9, 1.1)
+            }}
+            
     }
     
     train_extractor(path, hyperparameters, device)
