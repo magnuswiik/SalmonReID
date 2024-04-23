@@ -81,7 +81,7 @@ def make_datasets(datapath, hyperparameters):
     # Data augmentation
     transform = transforms.Compose([
         transforms.ColorJitter(brightness=BRIGHT, contrast=CONTR, saturation=SAT, hue=HUE),
-        #transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.RandomResizedCrop(size=(224, 224), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         transforms.ToTensor(),
     ])
 
