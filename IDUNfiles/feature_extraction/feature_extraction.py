@@ -88,6 +88,10 @@ def make_datasets(datapath, hyperparameters):
         transforms.RandomResizedCrop(size=SIZE, scale=SCALE, ratio=RATIO),
         transforms.ToTensor(),
     ])
+    
+    transform = transforms.Compose([
+        transforms.ToTensor()
+    ]) 
 
     # use our dataset and defined transformations
     dataset = ReidentificationDataset(datapath, "thorax", transform)
@@ -403,7 +407,7 @@ def main ():
     
     hyperparameters = {
         'model': 'ResNet101',
-        'epochs': 25,
+        'epochs': 100,
         'optimizer': {
                 'type': 'sgd',
                 'lr': 0.0005,
