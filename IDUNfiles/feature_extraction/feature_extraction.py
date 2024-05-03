@@ -369,7 +369,7 @@ def test_closedset(model, test_loader, device):
             image, target = data
             
             image = torch.stack(image).to(device)
-            target = target[0].item().to(device)
+            target = target[0].to(device)
 
             #visualize_batch(image)
 
