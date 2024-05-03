@@ -120,23 +120,14 @@ def dataloaders(bodypart, hyperparameters, approach):
     
     train_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.RandomResizedCrop(size=SIZE,
-                            scale=SCALE,
-                            ratio=RATIO),
             transforms.ToTensor()
         ])
     validation_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.RandomResizedCrop(size=SIZE,
-                            scale=SCALE,
-                            ratio=RATIO),
             transforms.ToTensor()
         ])
     test_transform = transforms.Compose([
             transforms.ToPILImage(),
-            transforms.RandomResizedCrop(size=SIZE,
-                            scale=SCALE,
-                            ratio=RATIO),
             transforms.ToTensor()
         ])
     
@@ -149,9 +140,6 @@ def dataloaders(bodypart, hyperparameters, approach):
                             contrast=CONTRAST,
                             saturation=SATURATION,
                             hue=HUE),
-        transforms.RandomResizedCrop(size=SIZE,
-                                    scale=SCALE,
-                                    ratio=RATIO),
         transforms.ToTensor()
         ])
         validation_transform = transforms.Compose([
@@ -160,9 +148,6 @@ def dataloaders(bodypart, hyperparameters, approach):
                             contrast=CONTRAST,
                             saturation=SATURATION,
                             hue=HUE),
-        transforms.RandomResizedCrop(size=SIZE,
-                                    scale=SCALE,
-                                    ratio=RATIO),
         transforms.ToTensor()
         ])
 
