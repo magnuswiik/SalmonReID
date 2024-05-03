@@ -368,10 +368,10 @@ def test_closedset(model, test_loader, device):
         for i, data in enumerate(prog_bar):
             image, target = data
             
-            image = torch.stack(image)
-            target = target[0].item()
+            image = torch.stack(image).to(device)
+            target = target[0].item().to(device)
 
-            visualize_batch(image)
+            #visualize_batch(image)
 
             output = model(image)
             _, pred = torch.max(output, 1)

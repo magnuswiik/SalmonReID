@@ -238,7 +238,7 @@ def train_model(model, train_loader, validation_loader, hyperparameters, device,
 def main():
     
     EPOCHS = 100 if torch.cuda.is_available() else 50
-    BATCHSIZE = 5 if torch.cuda.is_available() else 2
+    BATCHSIZE = 5 if torch.cuda.is_available() else 5
     
     hyperparameters_AP1 = {
         'bodypart': 'thorax',
