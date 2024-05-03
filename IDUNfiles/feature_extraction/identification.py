@@ -239,7 +239,7 @@ def main():
     }
     
     hyperparameters_AP2 = {
-        'bodypart': 'thorax',
+        'bodypart': 'dorsalfin',
         'epochs': EPOCHS,
         'data_augmentation': {
             'color_jitter': {
