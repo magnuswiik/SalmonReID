@@ -289,8 +289,8 @@ def train_closedset(model, criterion, optimizer, scheduler, train_loader, valida
         
         for i, data in enumerate(prog_bar):
             images, targets = data
-            images = torch.stack(images)
-            targets = torch.tensor([map_individuals[target.item()] for target in targets])
+            images = torch.stack(images).to(device)
+            targets = torch.tensor([map_individuals[target.item()] for target in targets]).to(device)
             
             #visualize_batch(images)
 
@@ -311,8 +311,8 @@ def train_closedset(model, criterion, optimizer, scheduler, train_loader, valida
             prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{EPOCHS}| Loss: {batch_loss:.4f}")
         
         for images, targets in validation_loader:
-            images = torch.stack(images)
-            targets = torch.tensor([map_individuals[target.item()] for target in targets])
+            images = torch.stack(images).to(device)
+            targets = torch.tensor([map_individuals[target.item()] for target in targets]).to(device)
             
             val_loss = 0
             with torch.no_grad():
