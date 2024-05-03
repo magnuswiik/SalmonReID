@@ -376,7 +376,7 @@ def test_closedset(model, test_loader, device):
             output = model(image)
             _, pred = torch.max(output, 1)
             predictions_list.append(map_individuals[pred.item()])
-            targets_list.append(target)
+            targets_list.append(target.item())
             
     # Calculate accuracy
     accuracy = accuracy_score(targets_list, predictions_list)
