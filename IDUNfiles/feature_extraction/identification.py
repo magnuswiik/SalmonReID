@@ -237,7 +237,7 @@ def train_model(model, train_loader, validation_loader, hyperparameters, device,
 
 def main():
     
-    EPOCHS = 500 if torch.cuda.is_available() else 10
+    EPOCHS = 100 if torch.cuda.is_available() else 50
     BATCHSIZE = 5 if torch.cuda.is_available() else 2
     
     hyperparameters_AP1 = {
