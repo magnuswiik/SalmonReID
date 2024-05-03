@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os, json, math
 import matplotlib.pyplot as plt
+import pandas as pd
 
 def calculate_angle(vector1, vector2):
     dot_product = np.dot(vector1, vector2)
@@ -106,7 +107,9 @@ def main():
     reference_image_path = os.path.join(from_path, "fish9/fish9_GP020101_00005919.jpg")
     reference_image = cv2.cvtColor(cv2.imread(reference_image_path, cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
     reference_annot_path = os.path.join(from_path, "fish9/fish9_GP020101_00005919.json")
-    reference_points = np.zeros((15, 2), dtype=np.float32)
+    reference_points = np.array([[488.179168, 69.288451],[627.979469, 49.451411],
+                                 [834.962545, 286.265656],[29.634321, 307.930108]], dtype=np.float32)
+    reference_points = np.zeros((4, 2), dtype=np.float32)
     reference_boxes = np.zeros((5, 6), dtype=np.float32)
     
     with open(reference_annot_path, 'r') as file:
@@ -117,11 +120,13 @@ def main():
         index_box = 0 
         for shape in shapes:
             if shape['shape_type'] == 'point':
-                point = shape['points']
-                x1 = float(point[0][0])
-                y1 = float(point[0][1])
-                reference_points[index_point] = [x1, y1]
-                index_point += 1
+                if shape['label'] == 'dorsalback' or shape['label'] == 'dorsalfront' or shape['label'] == 'pectoral' or shape['label'] == 'tailbot':
+                    point = shape['points']
+                    print(shape['label'])
+                    x1 = float(point[0][0])
+                    y1 = float(point[0][1])
+                    reference_points[index_point] = [x1, y1]
+                    index_point += 1
                 
             if shape['shape_type'] == 'rectangle':
                 box = shape['points']
@@ -144,13 +149,24 @@ def main():
     plt.imshow(reference_image)
     plt.axis('off')
     plt.show()'''
+    
+    all_points = {
+        'dorsalbackx': [],
+        'dorsalbacky': [],
+        'dorsalfrontx': [],
+        'dorsalfronty': [],
+        'pectoralx': [],
+        'pectoraly': [],
+        'tailbotx': [],
+        'tailboty': []
+    }
 
     for i in range(len(imgs)):
         
         image = cv2.cvtColor(cv2.imread(imgs[i], cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
 
         # Extract location of good matches
-        points = np.zeros((15, 2), dtype=np.float32)
+        points = np.zeros((4, 2), dtype=np.float32)
         boxes = np.zeros((5, 6), dtype=np.float32)
 
         index_point = 0 
@@ -159,13 +175,19 @@ def main():
             content = json.load(file)
             shapes = content['shapes']
             
+            shapes_left = ['dorsalback','dorsalfront','pectoral','tailbot']
+            
             for shape in shapes:
                 if shape['shape_type'] == 'point':
-                    point = shape['points']
-                    x1 = float(point[0][0])
-                    y1 = float(point[0][1])
-                    points[index_point] = [x1, y1]
-                    index_point += 1
+                    if shape['label'] == 'dorsalback' or shape['label'] == 'dorsalfront' or shape['label'] == 'pectoral' or shape['label'] == 'tailbot':
+                        shapes_left.remove(shape['label'])
+                        point = shape['points']
+                        x1 = float(point[0][0])
+                        y1 = float(point[0][1])
+                        points[index_point] = [x1, y1]
+                        index_point += 1
+                        all_points[shape['label']+'x'].append(x1)
+                        all_points[shape['label']+'y'].append(y1)
                     
                 if shape['shape_type'] == 'rectangle':
                     box = shape['points']
@@ -175,10 +197,34 @@ def main():
                     y2 = float(box[1][1])
                     boxes[index_box] = [x1, y1, 1, x2, y2, 1]
                     index_box += 1
+                
+            if len(shapes_left) != 0:
+                print('shape is missing!')
         
         warped_image, warped_points = perspective_transform(image, reference_image, points, reference_points, boxes)
         visualize_transformed_image(warped_image, warped_points) 
     
+    avg_point = {
+        'dorsalbackx': 0,
+        'dorsalbacky': 0,
+        'dorsalfrontx': 0,
+        'dorsalfronty': 0,
+        'pectoralx': 0,
+        'pectoraly': 0,
+        'tailbotx': 0,
+        'tailboty': 0
+    }
+            
+    for label, points in all_points.items():
+        for p in points:
+            avg_point[label] += p
+        avg_point[label] /= len(points)
+    
+    print(avg_point)
+    df = pd.DataFrame(all_points)
+    print(df.median())
+            
+            
     '''# Add points to image
         for point in points:
             cv2.circle(image, (int(point[0]), int(point[1])), 5, (255, 0, 0), -1)

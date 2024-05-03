@@ -1,7 +1,8 @@
 import torch
-from torchvision.models.resnet import resnet50, resnet101, ResNet50_Weights, ResNet101_Weights
+from torchvision.models.resnet import resnet18, resnet50, resnet101, ResNet18_Weights, ResNet50_Weights, ResNet101_Weights
 from torch.nn import TripletMarginLoss
-import os, re
+from torch import nn
+import os, re, math
 import pandas as pd
 import cv2
 import numpy as np
@@ -10,18 +11,21 @@ from sklearn.preprocessing import StandardScaler
 from matplotlib import pyplot as plt
 import seaborn as sns
 from ReidentificationDataset import ReidentificationDataset
+from TripletReidentificationDataset import TripletReidentificationDataset
+from WholeFishReidentificationDataset import WholeFishReidentificationDataset
+from ClosedSetReidentificationDataset import ClosedSetReidentificationDataset
 from tqdm.auto import tqdm
 from sklearn.manifold import TSNE
-from sklearn.svm import SVC
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.model_selection import train_test_split
 import captum
-from captum.attr import IntegratedGradients
+from captum.attr import IntegratedGradients, NoiseTunnel
 from captum.attr import visualization as viz
 import torchvision.transforms as transforms
 from PIL import Image
 import random
 from datetime import datetime
+from sklearn.svm import SVC
 
 def create_results_folder(base_path, prefix="featuremodel"):
     # Create a timestamp for uniqueness
@@ -42,6 +46,23 @@ def save_hyperparameters(folder_path, hyperparameters):
         # Write each hyperparameter to the file
         for key, value in hyperparameters.items():
             file.write(f"{key}: {value}\n")
+            
+def save_summary(folder_path, hyperparameters, accuracy, report, train_loader, test_loader):
+    # Define the file path for saving hyperparameters
+    filepath = os.path.join(folder_path, "summary.txt")
+    
+    train_images = train_loader.sampler.data_source.images
+    test_images = test_loader.sampler.data_source.images
+    
+    with open(filepath, 'w') as file:
+        for key, value in hyperparameters.items():
+            file.write(f"{key}: {value}\n")
+        file.write(f'Dataset training indices: {train_images}\n')
+        #file.write(f'Dataset validation indices: {val_indices}\n')
+        file.write(f'Dataset test indices: {test_images}\n')
+        file.write(f'Accuracy: {accuracy}\n')
+        file.write('Classification Report:\n')
+        file.write(report)
 
 def collate_fn(batch):
     """
@@ -68,7 +89,31 @@ def get_resnet101_noclslayer(weights, modelpath=None):
     
     return model
 
-def make_datasets(datapath, hyperparameters):
+def get_resnet101_withclslayer(weights, num_classes=8, modelpath=None):
+    # Load the ResNet-101 model with pre-trained weights if specified
+    model = resnet101(pretrained=weights)
+    
+    # Get the number of input features for the classification layer
+    num_features = model.fc.in_features
+    
+    # Replace the classification layer with a new one
+    model.fc = nn.Linear(num_features, num_classes)
+    
+    return model
+
+def get_resnet18_withclslayer(weights, num_classes=7, modelpath=None):
+    # Load the ResNet-101 model with pre-trained weights if specified
+    model = resnet18(pretrained=weights)
+    
+    # Get the number of input features for the classification layer
+    num_features = model.fc.in_features
+    
+    # Replace the classification layer with a new one
+    model.fc = nn.Linear(num_features, num_classes)
+    
+    return model
+
+def make_datasets_with_ratio(datapath, landmark, hyperparameters):
     
     BRIGHT = hyperparameters['data_augmentation']['color_jitter']['brightness']
     CONTR = hyperparameters['data_augmentation']['color_jitter']['contrast']
@@ -88,20 +133,16 @@ def make_datasets(datapath, hyperparameters):
         transforms.RandomResizedCrop(size=SIZE, scale=SCALE, ratio=RATIO),
         transforms.ToTensor(),
     ])
-    
-    transform = transforms.Compose([
-        transforms.ToTensor()
-    ]) 
 
     # use our dataset and defined transformations
-    dataset = ReidentificationDataset(datapath, "thorax", transform)
-    dataset_validation = ReidentificationDataset(datapath, "thorax", transform)
-    #dataset_test = ReidentificationDataset(datapath, "thorax", transform)
+    dataset = TripletReidentificationDataset(datapath, landmark, transform)
+    dataset_validation = TripletReidentificationDataset(datapath, landmark, transform)
+    dataset_test = TripletReidentificationDataset(datapath, landmark, transform)
 
     data_indices = np.arange(0,len(dataset.images), dtype=np.int16).tolist()
 
-    #indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
-    #data_indices = [idx for idx in data_indices if idx not in indices_test]
+    indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
+    data_indices = [idx for idx in data_indices if idx not in indices_test]
 
     indices_validation = random.sample(data_indices, int(len(data_indices)*0.2))
     data_indices = [idx for idx in data_indices if idx not in indices_validation]
@@ -111,9 +152,9 @@ def make_datasets(datapath, hyperparameters):
     # split the dataset in train and test set
     dataset_training = torch.utils.data.Subset(dataset, indices_training) # 80% for training and validation
     dataset_validation = torch.utils.data.Subset(dataset_validation, indices_validation)
-    #dataset_test = torch.utils.data.Subset(dataset_test, indices_test) # 20% for testing
+    dataset_test = torch.utils.data.Subset(dataset_test, indices_test) # 20% for testing
     
-    return dataset_training, dataset_validation #, dataset_test
+    return dataset_training, dataset_validation, dataset_test    
 
 def visualize_triplets(anchor, positive, negative):
     
@@ -127,156 +168,267 @@ def visualize_triplets(anchor, positive, negative):
     axs[2].set_title('Negative')
     plt.show()
 
-def train_extractor(datapath, hyperparameters, device):
+def visualize_batch(image_batch):
     
-    cwd = os.getcwd()
-    MODELPATH = cwd + "/feature_extraction_models/newmodel/"
+    batch_dim = image_batch.size(0)
+    
+    # Visualize the images
+    fig, axs = plt.subplots(1, batch_dim, figsize=(10, 3))
 
-    folder_path = create_results_folder(MODELPATH)
+    for i in range(batch_dim):
+        image = image_batch[i].squeeze(0).cpu().permute(1, 2, 0).numpy()
+        if batch_dim == 1:
+            axs.imshow(image)
+            axs.set_title(f'Image {i+1}')
+        else:
+            axs[i].imshow(image)
+            axs[i].set_title(f'Image {i+1}')
+
+    plt.show()
+
+def train_extractor(model, criterion, optimizer, scheduler, train_loader, validation_loader, EPOCHS, hyperparameters, device, folder):
     
-    save_hyperparameters(folder_path, hyperparameters)
+    best_model_path = os.path.join(folder, 'best_model.pt')
     
-    # Get hyperparameters
-    EPOCHS = hyperparameters['epochs']
-    BS = hyperparameters['batch_size']
-    LR = hyperparameters['optimizer']['lr']
-    MOM = hyperparameters['optimizer']['momentum']
-    WD = hyperparameters['optimizer']['momentum']
-    FACTOR = hyperparameters['lr_scheduler']['factor']
-    PATIENCE = hyperparameters['lr_scheduler']['patience']
-    NWORKERS = 5 if torch.cuda.is_available() else 0
-    
-    dataset_training, dataset_validation = make_datasets(datapath, hyperparameters)
-    
-    # Random seed for reproducibility
-    g = torch.manual_seed(0)
-    
-    data_loader_training = torch.utils.data.DataLoader(
-        dataset_training,
-        batch_size=BS,
-        shuffle=False,
-        num_workers=NWORKERS,
-        collate_fn=collate_fn,
-        generator=g
-    )
-    
-    data_loader_validation = torch.utils.data.DataLoader(
-        dataset_validation,
-        batch_size=BS,
-        shuffle=False,
-        num_workers=NWORKERS,
-        collate_fn=collate_fn,
-        generator=g
-    )
-    
-    model = get_resnet101_noclslayer(ResNet101_Weights)
-    model.train()
-    
-    # move model to the right device
-    model.to(device)
-    
-    # construct an optimizer
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=LR, momentum=MOM, weight_decay=WD)
-          
-    # Learning rate scheduler
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=FACTOR, patience=PATIENCE
-)
+    save_hyperparameters(folder, hyperparameters)
     
     train_loss_list = []
     lr_step_sizes = []
-    validation_losses = []
+    validation_loss_list = []
 
     best_validation_loss = float('inf')
     
     for epoch in range(EPOCHS):
         
-        train_loss_per_epoch = []
+        train_loss_per_epoch = 0
+        validation_loss_per_epoch = 0
         
-        prog_bar = tqdm(data_loader_training, total=len(data_loader_training))
+        
+        prog_bar = tqdm(train_loader, total=len(train_loader.batch_sampler))
         
         for i, data in enumerate(prog_bar):
             images, targets = data
-            images = [[anchor.to(device), positive.to(device), negative.to(device)] for anchor, positive, negative in images]
             optimizer.zero_grad()
             loss = 0
-            for anchor, positive, negative in images:
-                anchor_outputs = model(anchor)
-                positive_outputs = model(positive)
-                negative_outputs = model(negative)
-                triplet_loss = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
-                loss += triplet_loss(anchor_outputs, positive_outputs, negative_outputs)
-            train_loss_per_epoch.append(loss.item())
-            loss.backward()
-            optimizer.step()
+            with torch.set_grad_enabled(True):
+                for triplet in images:
+                    input = torch.stack(triplet)
+                    output = model(input)
+                    
+                    loss += criterion(output[0], output[1], output[2])
+                    #visualize_triplets(triplet[0], triplet[1], triplet[2])
+                    
+                loss.backward()
+                optimizer.step()
             
-            prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{EPOCHS}| Loss: {loss:.4f}")
-            
-        validation_loss = 0.0
-        with torch.no_grad():
-            for images, targets in data_loader_validation:
-                images = [[anchor.to(device), positive.to(device), negative.to(device)] for anchor, positive, negative in images]
-                val_loss = 0
-                for anchor, positive, negative in images:
-                    anchor_outputs = model(anchor)
-                    positive_outputs = model(positive)
-                    negative_outputs = model(negative)
-                    triplet_loss_val = TripletMarginLoss(margin=1.0, p=2, eps=1e-7)
-                    val_loss += triplet_loss_val(anchor_outputs, positive_outputs, negative_outputs)
-                validation_loss += val_loss.item()
+            batch_loss = loss.item()*len(images)*3
+            train_loss_per_epoch += batch_loss
         
-        train_loss_list.append(sum(train_loss_per_epoch)/len(train_loss_per_epoch))
+            prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{EPOCHS}| Loss: {batch_loss:.4f}")
+        
+        for images, targets in validation_loader:
+            val_loss = 0
+            
+            with torch.no_grad():
+                for triplet in images:
+                    input = torch.stack(triplet)
+                    output = model(input)
+                    
+                    val_loss += criterion(output[0], output[1], output[2])
+            
+            batch_loss = val_loss.item()*len(images)*3
+            validation_loss_per_epoch += batch_loss
+        
+        average_train_loss_this_epoch = train_loss_per_epoch/len(train_loader.sampler)
+        train_loss_list.append(round(average_train_loss_this_epoch,5))
+        average_validation_loss_this_epoch = validation_loss_per_epoch/len(validation_loader.sampler)
+        validation_loss_list.append(round(average_validation_loss_this_epoch,5))
         lr_step_sizes.append(optimizer.param_groups[0]['lr'])
-        validation_loss /= len(data_loader_validation)
-        validation_losses.append(validation_loss)
+        
         
         # Save the model if it has the best validation loss
-        if validation_loss < best_validation_loss and epoch > 10:
-            best_validation_loss = validation_loss
-            best_model_path = os.path.join(folder_path, 'best_model.pt')
+        if average_validation_loss_this_epoch < best_validation_loss:
+            best_validation_loss = average_validation_loss_this_epoch
             torch.save(model.state_dict(), best_model_path)
-            #print(f"Best model saved at: {best_model_path}")
         
-        lr_scheduler.step(validation_loss)
+        scheduler.step()
         
-    dict = {'training_loss': train_loss_list, 'validation_loss':validation_losses, 'lr_step_size': lr_step_sizes}
+    dict = {'training_loss': train_loss_list, 'validation_loss':validation_loss_list, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
-    df.to_csv(os.path.join(folder_path, 'metrics.csv'), index=False)
+    df.to_csv(os.path.join(folder, 'metrics.csv'), index=False)
     
+    return best_model_path
+    
+def train_closedset(model, criterion, optimizer, scheduler, train_loader, validation_loader, EPOCHS, hyperparameters, device, folder):
+    
+    map_individuals = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}
+    
+    best_model_path = os.path.join(folder, 'best_model.pt')
+    model.to(device)
+    model.train()
+    
+    train_size = len(train_loader.sampler)
+    validation_size = len(validation_loader.sampler)
+    
+    train_loss_list = []
+    train_acc_list = []
+    lr_step_sizes = []
+    validation_loss_list = []
+    validation_acc_list = []
+    
+    best_validation_loss = float('inf')
+    
+    for epoch in range(EPOCHS):
+        
+        prog_bar = tqdm(train_loader, total=len(train_loader))
+        
+        train_loss_per_epoch = 0
+        validation_loss_per_epoch = 0
+        train_running_corrects = 0
+        validation_running_corrects = 0
+        
+        for i, data in enumerate(prog_bar):
+            images, targets = data
+            images = torch.stack(images)
+            targets = torch.tensor([map_individuals[target.item()] for target in targets])
             
+            #visualize_batch(images)
 
-def extract_features(modelpath, datapath, device):
+            optimizer.zero_grad()
+            loss = 0
+            with torch.set_grad_enabled(True):
+                output = model(images)
+                _, preds = torch.max(output, 1)
+                loss = criterion(output, targets)
+            
+                loss.backward()
+                optimizer.step()
+            
+            batch_loss = loss.item()*len(images)
+            train_loss_per_epoch += batch_loss
+            train_running_corrects += torch.sum(preds == targets.data)
+                
+            prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{EPOCHS}| Loss: {batch_loss:.4f}")
+        
+        for images, targets in validation_loader:
+            images = torch.stack(images)
+            targets = torch.tensor([map_individuals[target.item()] for target in targets])
+            
+            val_loss = 0
+            with torch.no_grad():
+                output = model(images)
+                _, preds = torch.max(output, 1)
+                val_loss += criterion(output, targets)
+            
+            batch_loss = val_loss.item()*len(images)
+            validation_loss_per_epoch += batch_loss
+            validation_running_corrects += torch.sum(preds == targets.data)
+            
+        train_epoch_acc = train_running_corrects / train_size
+        train_acc_list.append(round(train_epoch_acc.item(), 5))
+        validation_epoch_acc = validation_running_corrects / validation_size
+        validation_acc_list.append(round(validation_epoch_acc.item(), 5))
+        
+        average_train_loss_this_epoch = train_loss_per_epoch/len(train_loader.sampler)
+        train_loss_list.append(round(average_train_loss_this_epoch,5))
+        average_validation_loss_this_epoch = validation_loss_per_epoch/len(validation_loader.sampler)
+        validation_loss_list.append(round(average_validation_loss_this_epoch,5))
+        lr_step_sizes.append(optimizer.param_groups[0]['lr'])
+        
+        
+        # Save the model with best validation loss
+        if average_validation_loss_this_epoch < best_validation_loss:
+            best_validation_loss = average_validation_loss_this_epoch
+            torch.save(model.state_dict(), best_model_path)
+        
+        scheduler.step()
+        print(f'Training Loss: {average_train_loss_this_epoch:.4f} Acc: {train_epoch_acc:.4f}') 
+    
+    
+    dict = {'training_loss': train_loss_list, 'validation_loss':validation_loss_list, 'training_acc': train_acc_list, 'validation_acc':validation_acc_list, 'lr_step_size': lr_step_sizes}
+    df = pd.DataFrame(dict)
+    df.to_csv(os.path.join(folder, 'metrics.csv'), index=False)
+    
+    return best_model_path
+        
+def test_closedset(model, test_loader, device):
+    
+    map_individuals = {0:3, 1:5, 2:7, 3:9, 4:10, 5:17, 6:19, 7:20}
+    
+    model.to(device)
+    model.eval()
+    
+    prog_bar = tqdm(test_loader, total=len(test_loader))
+    
+    predictions_list = []
+    targets_list = []
+    
+    with torch.no_grad():
+        
+        for i, data in enumerate(prog_bar):
+            image, target = data
+            
+            image = torch.stack(image)
+            target = target[0].item()
+
+            visualize_batch(image)
+
+            output = model(image)
+            _, pred = torch.max(output, 1)
+            predictions_list.append(map_individuals[pred.item()])
+            targets_list.append(target)
+            
+    # Calculate accuracy
+    accuracy = accuracy_score(targets_list, predictions_list)
+    
+    # Generate classification report
+    report = classification_report(targets_list, predictions_list)
+    
+    return accuracy, report
+    
+def predict_features(model, train_loader, test_loader, landmark, device):
     
     labels_map = {'tailfin': 1, 'dorsalfin': 2, 'thorax': 3, 'pectoralfin': 4, 'eyeregion': 5}
     
+    landmark = labels_map[landmark]
+    
     num_columns = 2050 # Resnet feature vector + fish id + landmark id
 
-    df = pd.DataFrame(columns=range(num_columns))
+    df_train = pd.DataFrame(columns=range(num_columns))
+    df_test = pd.DataFrame(columns=range(num_columns))
     
-    model = get_resnet50_noclslayer(ResNet50_Weights)
-    model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
     model.eval()
     
-    for fish in sorted(os.listdir(datapath)):
-        if (not fish.startswith('.')):
-            for landmark in sorted(os.listdir(os.path.join(datapath, fish))):
-                if (not landmark.startswith('.')):
-                    for file in sorted(os.listdir(os.path.join(datapath, fish, landmark))):
-                        if (not file.startswith('.')):
-                            image_path = os.path.join(datapath, fish, landmark, file)
-                            image = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-                            image = np.transpose(image / 255.0, (2, 0, 1)) # Pixel values need to be between 0 and 1 and transpose image 
-                            image_tensor = torch.tensor(image, dtype=torch.float32).unsqueeze(0).to(device)  # Add batch dimension and add to device
-
-                            output = model(image_tensor)
-                            output_flattened = output.view(1, -1).squeeze(0).detach().numpy()
-                            fish_id = [int(x) for x in re.findall(r'\d+', file)][0]
-                            landmark_id = labels_map[landmark]
-                            output_flattened = np.append(output_flattened, [fish_id, landmark_id])
-                            df.loc[len(df)] = output_flattened
+    for image, target in train_loader:
+        image = torch.stack(image)
+        fish = target[0].item()
+        
+        output = model(image)
+        output_flattened = output.view(1, -1).squeeze(0).detach().numpy()
+        output_flattened = np.append(output_flattened, [fish, landmark])
+        df_train.loc[len(df_train)] = output_flattened
+        
+    
+    '''    for images, targets in validation_loader:
+        
+        image = images[0][0].unsqueeze(0)
+        fish = targets[0][0]
+        
+        output = model(image)
+        output_flattened = output.view(1, -1).squeeze(0).detach().numpy()
+        output_flattened = np.append(output_flattened, [fish, landmark])
+        df_train.loc[len(df_train)] = output_flattened'''
+        
+    for image, target in test_loader:
+        image = torch.stack(image)
+        fish = target[0].item()
+        
+        output = model(image)
+        output_flattened = output.view(1, -1).squeeze(0).detach().numpy()
+        output_flattened = np.append(output_flattened, [fish, landmark])
+        df_test.loc[len(df_test)] = output_flattened
                         
-    return df 
+    return df_train, df_test
     
 def analyze_data_pca(df):
     
@@ -327,9 +479,7 @@ def analyze_data_tsne(df):
     
     labels_map = {1:'tailfin', 2:'dorsalfin', 3:'thorax', 4:'pectoralfin', 5:'eyeregion'}
     
-    df = df[df[2049] == 3]
-    
-    tsne = TSNE(n_components=2, perplexity=30, random_state=0)
+    tsne = TSNE(n_components=2, perplexity=15, random_state=0)
     
     result = tsne.fit_transform(df)
     
@@ -355,106 +505,116 @@ def analyze_data_tsne(df):
     plt.legend(title="Fish ID")
     plt.show()
     
-def train_SVM(feature_vectors, labels):
+def train_SVM(hyperparameters, df_train):
     
-    X_train, X_test, y_train, y_test = train_test_split(feature_vectors, labels, test_size=0.2, random_state=0)
+    labels = df_train[2048]
+    feature_vectors = df_train.drop(columns=[2048,2049])
+    
+    # Get hyperparameters for SVM
+    KERNEL = hyperparameters['classification']['kernel']
+    C = hyperparameters['classification']['c']
+    RANDOMSTATE = hyperparameters['classification']['randomstate']
+    classifier = SVC(kernel=KERNEL, C=C, random_state=RANDOMSTATE)
     
     # Train the SVM classifier
-    svm_classifier = SVC(kernel='linear', C=1.0, random_state=42)
-    svm_classifier.fit(X_train, y_train)
+    classifier.fit(feature_vectors, labels)
 
-    # Predict labels for the test set
-    y_pred = svm_classifier.predict(X_test)
+    return classifier
 
+def test_SVM(classifier, df_test):
+    
+    labels = df_test[2048]
+    feature_vectors = df_test.drop(columns=[2048,2049])
+    
+    # Predict labels for the feature vectors
+    predicted_labels = classifier.predict(feature_vectors)
+    
     # Calculate accuracy
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f'Accuracy: {accuracy:.4f}')
+    accuracy = accuracy_score(labels, predicted_labels)
     
-def explain_extractor(modelpath, datapath, device):
+    # Generate classification report
+    report = classification_report(labels, predicted_labels)
     
-    image = cv2.cvtColor(cv2.imread(datapath), cv2.COLOR_BGR2RGB)
-    image_trans = np.transpose(image / 255.0, (2, 0, 1)) # Pixel values need to be between 0 and 1 and transpose image 
-    image_tensor = torch.tensor(image_trans, dtype=torch.float32).unsqueeze(0).to(device) 
+    return accuracy, report
     
+def explain_extractor(model, image_nr, train_loader, test_loader):
     
-    model = get_resnet50_noclslayer(ResNet50_Weights)
-    model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
-    model.eval()
+    iter_train_loader = iter(train_loader)
+
+    image, target = 0, 0
+    image_name = ""
+    for i in range(image_nr):
+        image, target = next(iter_train_loader)
+        image = image[0].unsqueeze(0)
     
     integrated_gradients = IntegratedGradients(model)
-    attributions_ig = integrated_gradients.attribute(image_tensor, target=1, n_steps=200)
+    attributions_ig = integrated_gradients.attribute(image, target=target, n_steps=50)
     
-    img = np.transpose(image_tensor.squeeze().cpu().detach().numpy(), (1,2,0))
+    image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
     
-    fig1, ax1 = viz.visualize_image_attr(None, img, method="original_image", title="Input image to ResNet")
+    '''    fig1, ax1 = viz.visualize_image_attr(None, image, method="original_image", title="Input image to ResNet")
     fig2, ax2 = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1,2,0)),
-                                 img,
+                                 image,
                                  method='heat_map',
                                  sign='positive',
-                                 title='Integrated gradients')
+                                 title='Integrated gradients')'''
     
+    attributions_np = np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1, 2, 0))
+
+    # Set negative values to zero
+    attributions_np[attributions_np < 0] = 0
+
+    # Scale the attributions to the range [0, 1] for overlay
+    attributions_np = (attributions_np - attributions_np.min()) / (attributions_np.max() - attributions_np.min())
+
+    # Ensure that attributions_np is in the appropriate range [0, 1]
+    attributions_np = np.clip(attributions_np, 0, 1)
     
-def main ():
+    # Display the input image and the explained image
+    plt.figure(figsize=(10, 5))
+
+    plt.subplot(3, 1, 1)
+    plt.imshow(image)
+    plt.title("Input image")
+    plt.axis('off')
+
+    plt.subplot(3, 1, 2)
+    plt.imshow(attributions_np, cmap='hot')
+    plt.title("Attributions")
+    plt.axis('off')
     
-    modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/feature_extraction_models/thoraxmodel/model1.pt"
-    datapath_mac = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/"
-    datapath_idun = "/cluster/home/magnuwii/Identifikasjonssett/"
+    attributions_np += 1
     
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    path = datapath_idun if torch.cuda.is_available() else datapath_mac
-    
-    print(f"device: {device}")
-    
-    hyperparameters = {
-        'model': 'ResNet101',
-        'epochs': 100,
-        'optimizer': {
-                'type': 'sgd',
-                'lr': 0.0005,
-                'momentum': 0.9,
-                'weight_decay': 0.0005},
-        'batch_size': 25,
-        'lr_scheduler': {
-            'type': 'reduce_lr_on_plateau',
-            'factor': 0.2,
-            'patience': 5
-        },
-        'data_augmentation': {
-            'color_jitter': {
-                'brightness': 0,
-                'contrast': 0,
-                'saturation': 0,
-                'hue': 0},
-            'random_resized_crop':{
-                'size': (224, 224), 
-                'scale': (0.8, 1.0),
-                'ratio': (0.9, 1.1)
-            }}
-            
-    }
-    
-    train_extractor(path, hyperparameters, device)
-    
-    #features = extract_features(modelpath, datapath, "cpu")
-    
-    #features.to_csv("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/feature_extraction/features_thorax_NOTtrained.csv")
-    
-    #features = pd.read_csv("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/feature_extraction/features_thorax_trained.csv")
-    
-    #labels = features[2049]
-    
-    #feature_vectors = features.drop(columns=[2048,2049])
-    
-    #train_SVM(feature_vectors.values, labels.values)
-    
-    #analyze_data_tsne(features)
-    
-    #train_extractor(datapath, 100, 0.005, "cpu")
-    
-    #explain_extractor(modelpath,"/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/fish9/thorax/fish9_thorax_GP020101_00005889.jpg", "cpu")
-    
-    
-if __name__ == "__main__":
-    
-    main()
+    # Increase brightness based on attributions
+    brightness_adjusted_image = np.clip(image * attributions_np, 0, 1)
+
+    plt.subplot(3, 1, 3)
+    plt.imshow(brightness_adjusted_image)
+    plt.title("Overlayed")
+    plt.axis('off')
+
+    plt.show()
+
+    '''    # Save figures
+    fig1.savefig('input_image.png')
+    fig2.savefig('explained_image.png')'''
+      
+#train_closedset(path, hyperparameters, device)
+
+#features.to_csv("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/feature_extraction/features_thorax_NOTtrained.csv")
+
+#features = pd.read_csv("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/feature_extraction/features_thorax_trained.csv")
+
+#labels = features[2049]
+
+#feature_vectors = features.drop(columns=[2048,2049])
+
+#train_SVM(feature_vectors.values, labels.values)
+
+#analyze_data_tsne(features)
+
+#train_extractor(datapath, 100, 0.005, "cpu")
+
+#explain_extractor(modelpath,"/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Identifikasjonssett/fish9/thorax/fish9_thorax_GP020101_00005889.jpg", "cpu")
+
     
