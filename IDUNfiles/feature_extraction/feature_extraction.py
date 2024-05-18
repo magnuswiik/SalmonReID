@@ -292,7 +292,7 @@ def train_closedset(model, criterion, optimizer, scheduler, train_loader, valida
             images = torch.stack(images).to(device)
             targets = torch.tensor([map_individuals[target.item()] for target in targets]).to(device)
             
-            #visualize_batch(images)
+            visualize_batch(images)
 
             optimizer.zero_grad()
             loss = 0
@@ -537,67 +537,128 @@ def test_SVM(classifier, df_test):
     
     return accuracy, report
     
-def explain_extractor(model, image_nr, train_loader, test_loader):
+def explain_extractor_old(model, individual, train_loader, test_loader):
     
-    iter_train_loader = iter(train_loader)
+    map_individuals = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}
+    
+    iter_test_loader = iter(test_loader)
 
     image, target = 0, 0
-    image_name = ""
-    for i in range(image_nr):
-        image, target = next(iter_train_loader)
+    for i in range(len(test_loader.sampler)):
+        image, target = next(iter_test_loader)
         image = image[0].unsqueeze(0)
-    
-    integrated_gradients = IntegratedGradients(model)
-    attributions_ig = integrated_gradients.attribute(image, target=target, n_steps=50)
-    
-    image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
-    
-    '''    fig1, ax1 = viz.visualize_image_attr(None, image, method="original_image", title="Input image to ResNet")
-    fig2, ax2 = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1,2,0)),
-                                 image,
-                                 method='heat_map',
-                                 sign='positive',
-                                 title='Integrated gradients')'''
-    
-    attributions_np = np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1, 2, 0))
+        target = target[0].item()
+        
+        if target == individual:
+            integrated_gradients = IntegratedGradients(model)
+            attributions_ig = integrated_gradients.attribute(image, target=map_individuals[target], n_steps=50)
+            
+            image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+            
+            '''    fig1, ax1 = viz.visualize_image_attr(None, image, method="original_image", title="Input image to ResNet")
+            fig2, ax2 = viz.visualize_image_attr(np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1,2,0)),
+                                        image,
+                                        method='heat_map',
+                                        sign='positive',
+                                        title='Integrated gradients')'''
+            
+            attributions_np = np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1, 2, 0))
 
-    # Set negative values to zero
-    attributions_np[attributions_np < 0] = 0
+            # Set negative values to zero
+            attributions_np[attributions_np < 0] = 0
 
-    # Scale the attributions to the range [0, 1] for overlay
-    attributions_np = (attributions_np - attributions_np.min()) / (attributions_np.max() - attributions_np.min())
+            # Scale the attributions to the range [0, 1] for overlay
+            attributions_np = (attributions_np - attributions_np.min()) / (attributions_np.max() - attributions_np.min())
 
-    # Ensure that attributions_np is in the appropriate range [0, 1]
-    attributions_np = np.clip(attributions_np, 0, 1)
-    
-    # Display the input image and the explained image
-    plt.figure(figsize=(10, 5))
+            # Ensure that attributions_np is in the appropriate range [0, 1]
+            attributions_np = np.clip(attributions_np, 0, 1)
+            
+            # Display the input image and the explained image
+            plt.figure(figsize=(10, 5))
 
-    plt.subplot(3, 1, 1)
-    plt.imshow(image)
-    plt.title("Input image")
-    plt.axis('off')
+            plt.subplot(3, 1, 1)
+            plt.imshow(image)
+            plt.title("Input image")
+            plt.axis('off')
 
-    plt.subplot(3, 1, 2)
-    plt.imshow(attributions_np, cmap='hot')
-    plt.title("Attributions")
-    plt.axis('off')
-    
-    attributions_np += 1
-    
-    # Increase brightness based on attributions
-    brightness_adjusted_image = np.clip(image * attributions_np, 0, 1)
+            plt.subplot(3, 1, 2)
+            plt.imshow(attributions_np, cmap='hot')
+            plt.title("Attributions")
+            plt.axis('off')
+            
+            attributions_np += 1
+            
+            # Increase brightness based on attributions
+            brightness_adjusted_image = np.clip(image * attributions_np, 0, 1)
 
-    plt.subplot(3, 1, 3)
-    plt.imshow(brightness_adjusted_image)
-    plt.title("Overlayed")
-    plt.axis('off')
+            plt.subplot(3, 1, 3)
+            plt.imshow(brightness_adjusted_image)
+            plt.title("Overlayed")
+            plt.axis('off')
 
-    plt.show()
+            plt.show()
 
     '''    # Save figures
     fig1.savefig('input_image.png')
     fig2.savefig('explained_image.png')'''
+
+def annotate_axes(ax, text, c, fontsize=12):
+    ax.text(0.85, 0.1, text, transform=ax.transAxes,
+            ha="left", va="top", fontsize=fontsize, color=c)
+    
+def explain_extractor(model, individual, train_loader, test_loader):
+    
+    map_individuals = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}
+    
+    iter_test_loader = iter(test_loader)
+    plot_images = []
+
+    for i in range(len(test_loader.sampler)):
+        image, target = next(iter_test_loader)
+        image = image[0].unsqueeze(0)
+        target = target[0].item()
+        
+        with torch.no_grad:
+            pred = model(image)
+        
+        if target == individual:
+            integrated_gradients = IntegratedGradients(model)
+            attributions_ig = integrated_gradients.attribute(image, target=map_individuals[target], n_steps=50)
+            
+            image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+            
+            attributions_np = np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1, 2, 0))
+
+            attributions_np[attributions_np < 0] = 0
+            attributions_np = (attributions_np - attributions_np.min()) / (attributions_np.max() - attributions_np.min())
+            attributions_np = np.clip(attributions_np*5, 0, 1)
+            
+            # Overlay the image with the attributions
+            attr_np = attributions_np + 1
+            overlayed_image = np.clip(image * attr_np, 0, 1)
+            
+            # Append images to list
+            plot_images.append(image)
+            plot_images.append(attributions_np)
+            plot_images.append(overlayed_image)
+
+    # Plot the images in a grid
+    num_cols = 6
+    num_rows = 5
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 10))
+    
+    axes = axes.flatten()
+    
+    for i, img in enumerate(plot_images):
+        axes[i].imshow(img, aspect="auto")
+        axes[i].axis('off')
+        annotate_axes(axes[i], str(i//3 + 1), 'yellow')
+
+    plt.subplots_adjust(wspace=.01, hspace=.01)
+    plt.show()
+    
+    fig.savefig('testset19_tailfin_explained.png')
+
       
 #train_closedset(path, hyperparameters, device)
 

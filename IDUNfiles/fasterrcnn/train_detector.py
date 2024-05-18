@@ -210,7 +210,7 @@ def train(datapath, epochs, lr, device):
     # define training and validation data loaders
     data_loader_validation = torch.utils.data.DataLoader(
         dataset_validation,
-        batch_size=3,
+        batch_size=5,
         shuffle=True,
         num_workers=5,
         collate_fn=collate_fn,
@@ -235,12 +235,14 @@ def train(datapath, epochs, lr, device):
     
     # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9, weight_decay=0.0005)
+    optimizer = torch.optim.SGD(params, lr=lr, momentum=0.9)
     
     # Learning rate scheduler
-    lr_scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    optimizer, factor=0.2, patience=10
-)
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=20,
+        gamma=0.2
+    )
 
     ### Training
 
@@ -299,7 +301,7 @@ def train(datapath, epochs, lr, device):
             #print(f"Best model saved at: {best_model_path}")
         
         # Change step size in optimizer
-        lr_scheduler.step(validation_loss)
+        lr_scheduler.step()
 
 
     ### SAVING RESULTS

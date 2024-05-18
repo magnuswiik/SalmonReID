@@ -7,6 +7,8 @@ from ReidentificationDataset import ReidentificationDataset
 from sklearn.svm import SVC
 import os
 import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
 
 def triplet_training_parameters_old():
     ''''epochs': 5,
@@ -90,6 +92,57 @@ def triplet_training_parameters_old():
     )'''
     
     #modelpath = train_extractor(model, criterion, optimizer, scheduler, train_loader, validation_loader, EPOCHS, hyperparameters, device, folder)
+
+def annotate_axes(ax, text, c, fontsize=8):
+    ax.text(0.85, 0.15, text, transform=ax.transAxes,
+            ha="left", va="top", fontsize=fontsize, color=c)
+    
+def give_name(target):
+    names = {3:'Novak', 5:'Jannik', 7:'Casper', 9:'Holger', 10:'Roger', 17:'Alexander', 19:'Stefanos', 20:'Daniil'}
+    return names[target]
+
+def visualize_dataloader(bodypart, num_cols, dataloader):
+    
+    num_images = len(dataloader.sampler)
+    
+    iter_loader = iter(dataloader)
+    
+    images = []
+    targets = []
+
+    image, target = 0, 0
+    for i in range(len(dataloader.sampler)):
+        image, target = next(iter_loader)
+        image = image[0]
+        target = target[0].item()
+        
+        image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+        
+        images.append(image)
+        targets.append(give_name(target))
+        
+    
+    
+    # Plot the images in a grid
+    num_rows = (num_images + num_cols - 1) // num_cols
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(num_cols, num_rows))
+    
+    axes = axes.flatten()
+    
+    for i, ax in enumerate(axes.flatten()):
+        if i < num_images:  # Only plot if there are images left
+            ax.imshow(images[i], aspect="auto")
+            ax.axis('off')
+            annotate_axes(ax, str(targets[i][0]), 'yellow')
+        else:  # Hide the extra subplots
+            ax.axis('off')
+            ax.set_visible(False)
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.show()
+    
+    fig.savefig('tailfin_dataset_test.png')
+        
               
 def dataloaders(bodypart, hyperparameters, approach):
     
@@ -193,7 +246,7 @@ def dataloaders(bodypart, hyperparameters, approach):
     test_loader = torch.utils.data.DataLoader(
         dataset_test,
         batch_size=1,
-        shuffle=True,
+        shuffle=False,
         num_workers=NUMWORKERS,
         collate_fn=collate_fn,
         generator=g
@@ -233,12 +286,12 @@ def train_model(model, train_loader, validation_loader, hyperparameters, device,
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=STEP, gamma=GAMMA)
     
     train_closedset(model, criterion, optimizer, scheduler, train_loader, validation_loader, EPOCHS, hyperparameters, device, folder)
-    
+
 
 def main():
     
     EPOCHS = 50 if torch.cuda.is_available() else 50
-    BATCHSIZE = 5 if torch.cuda.is_available() else 5
+    BATCHSIZE = 5 if torch.cuda.is_available() else 1
     
     hyperparameters_AP1 = {
         'bodypart': 'thorax',
@@ -254,7 +307,7 @@ def main():
     }
     
     hyperparameters_AP2 = {
-        'bodypart': 'eyeregion',
+        'bodypart': 'tailfin',
         'epochs': EPOCHS,
         'data_augmentation': {
             'color_jitter': {
@@ -297,20 +350,25 @@ def main():
     
     print('device:', device)
     
-    folder = results_folder()
+    #folder = results_folder()
 
     model_withcls = get_resnet101_withclslayer(ResNet101_Weights)
+    model_withcls.to(device)
+    state_dict = torch.load("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_14-15-06/best_model.pt", map_location=torch.device('cpu'))
+    model_withcls.load_state_dict(state_dict)
     model_nocls = get_resnet101_noclslayer(ResNet101_Weights)
     
-    best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
+    #best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
     
-    accuracy, report = test_closedset(model_withcls, test_loader, device)
+    #accuracy, report = test_closedset(model_withcls, test_loader, device)
     
     #df_train, df_test = predict_features(model, train_loader, test_loader, BODYPART, device)
     
     #analyze_features(df_train, df_test)
     
-    #explain_extractor(model, 8, train_loader, test_loader)
+    visualize_dataloader('thorax', 10, test_loader)
+    
+    #explain_extractor(model_withcls, 19, train_loader, test_loader)
 
     #classifier = train_SVM(hyperparameters, df_train)
     
@@ -318,11 +376,11 @@ def main():
     
     #accuracy, report = test_SVM(classifier, df_test)
     
-    print('Bodypart:', BODYPART)
+    '''    print('Bodypart:', BODYPART)
     print('Accuracy:', accuracy)
     print('Report:', report)
     
-    save_summary(folder, hyperparameters, accuracy, report, train_loader, test_loader)
+    save_summary(folder, hyperparameters, accuracy, report, train_loader, test_loader)'''
     
 
 if __name__ == "__main__":

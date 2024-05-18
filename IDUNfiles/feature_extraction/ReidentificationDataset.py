@@ -14,7 +14,7 @@ class ReidentificationDataset(Dataset):
         self.bodypart = bodypart
         self.images = []
         self.targets = []
-        for file in os.listdir(data_path):
+        for file in sorted(os.listdir(data_path)):
             file_bodypart = file.split("_")[1]
             if not file.startswith('.') and file_bodypart == bodypart:
                 if file.endswith(('.jpg', '.jpeg', '.png')):
@@ -26,11 +26,7 @@ class ReidentificationDataset(Dataset):
         return len(self.images)
     
     def __getitem__(self, idx):
-        
-        # Random seed
-        random.seed(0)
-        
-        # Anchor
+
         label = torch.tensor(self.targets[idx])
         img_path = os.path.join(self.data_path, self.images[idx])
         img = read_image(img_path) / 255.0
