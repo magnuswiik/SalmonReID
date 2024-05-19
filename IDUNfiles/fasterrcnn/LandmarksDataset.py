@@ -15,8 +15,9 @@ class LandmarksDataset(Dataset):
                 for file in sorted(os.listdir(os.path.join(data_path, folder))):
                     if file.endswith('.json'):
                         self.annots.append(file)
-                    elif file.endswith(('.jpg', '.jpeg', '.png')):
-                        self.images.append(file)
+        for file in self.annots:
+            file_jpg = file[:-4] + "jpg"
+            self.images.append(file_jpg)
     
     def __len__(self):
         return len(self.images)

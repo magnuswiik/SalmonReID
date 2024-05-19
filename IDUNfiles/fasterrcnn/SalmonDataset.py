@@ -11,12 +11,12 @@ class SalmonDataset(torch.utils.data.Dataset):
         # load all image files, sorting them to
         # ensure that they are aligned
         
-        self.imgs = [file for file in sorted(os.listdir(os.path.join(root, "Images"))) if file.endswith(('.jpg', '.jpeg', '.png'))]
+        self.images = [file for file in sorted(os.listdir(os.path.join(root, "Images"))) if file.endswith(('.jpg', '.jpeg', '.png'))]
         self.annots = [file for file in sorted(os.listdir(os.path.join(root, "Boxes"))) if file.endswith('.json')]
     
     def __getitem__(self, idx):
         # load images and masks
-        img_path = os.path.join(self.root, "Images", self.imgs[idx])
+        img_path = os.path.join(self.root, "Images", self.images[idx])
         annots_path = os.path.join(self.root, "Boxes", self.annots[idx])
         
         img = read_image(img_path)
@@ -62,4 +62,4 @@ class SalmonDataset(torch.utils.data.Dataset):
         return img, target
 
     def __len__(self):
-        return len(self.imgs)
+        return len(self.images)

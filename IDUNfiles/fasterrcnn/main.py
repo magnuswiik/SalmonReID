@@ -53,7 +53,7 @@ def main():
                 datapath = '/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/'
                 train_detector(datapath, epochs, lr, device)
             if task == 'landmarks':
-                datapath = '/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Landmark_Deteksjonssett_Trening/'
+                datapath = '/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Laks_kroppsdeler_Deteksjonssett/'
                 train_landmarks(datapath, epochs, lr, device)
                 
         else:
@@ -61,8 +61,8 @@ def main():
             modelpath = '/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/landmark_models/model1/model1.pt'
             inference_landmark(datapath, modelpath, device)'''
             
-            datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Helfisk_Deteksjonssett/"
-            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/newmodel/best_model.pt"
+            datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Laks_Deteksjonssett/"
+            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/best_model.pt"
             test_detector(datapath, modelpath, device)
 
 if __name__ == "__main__":

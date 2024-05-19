@@ -65,17 +65,21 @@ def get_mobile_detection_model(num_classes, weights=FasterRCNN_MobileNet_V3_Larg
     
     return model
 
-def make_datasets(datapath):
+def make_datasets(datapath, task):
     
     # Random seed for reproducibility
     random.seed(0)
 
-    # use our dataset and defined transformations
-    dataset = SalmonDataset(datapath)
-    dataset_validation = SalmonDataset(datapath)
-    dataset_test = SalmonDataset(datapath)
+    if task == "salmon":
+        dataset = SalmonDataset(datapath)
+        dataset_validation = SalmonDataset(datapath)
+        dataset_test = SalmonDataset(datapath)
+    if task == "landmarks":
+        dataset = LandmarksDataset(datapath)
+        dataset_validation = LandmarksDataset(datapath)
+        dataset_test = LandmarksDataset(datapath)
 
-    data_indices = np.arange(0,len(dataset.imgs), dtype=np.int16).tolist()
+    data_indices = np.arange(0,len(dataset.images), dtype=np.int16).tolist()
 
     indices_test = random.sample(data_indices, int(len(data_indices)*0.2))
     data_indices = [idx for idx in data_indices if idx not in indices_test]
@@ -94,25 +98,32 @@ def make_datasets(datapath):
 
 def train_landmarks(datapath, epochs, lr, device):
     
-    dataset = LandmarksDataset(datapath)
+    dataset_training, dataset_validation, dataset_test = make_datasets(datapath, "landmarks")
     
      # Random seed for reproducibility
     g = torch.manual_seed(0)
-    
-    # our dataset has two classes only - background and landmarks
-    num_classes = 6
 
     # define training and validation data loaders
     data_loader_training = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=2,
+        dataset_training,
+        batch_size=10,
         shuffle=True,
-        num_workers=0,
+        num_workers=5,
         collate_fn=collate_fn,
         generator=g
     )
     
-    # get the model using our helper function
+    data_loader_validation = torch.utils.data.DataLoader(
+        dataset_validation,
+        batch_size=10,
+        shuffle=True,
+        num_workers=5,
+        collate_fn=collate_fn,
+        generator=g
+    )
+    
+    # dataset has two classes only - background and landmarks
+    num_classes = 6
     model = get_detection_model(num_classes)
 
     # move model to the right device
@@ -133,6 +144,9 @@ def train_landmarks(datapath, epochs, lr, device):
 
     train_loss_list = []
     lr_step_sizes = []
+    validation_losses = []
+
+    best_validation_loss = float('inf')  # Initialize with a large value
 
     for epoch in range(epochs):
         
@@ -156,10 +170,30 @@ def train_landmarks(datapath, epochs, lr, device):
 
             # update the loss value beside the progress bar for each iteration
             prog_bar.set_description(desc=f"|Epoch: {epoch+1}/{epochs}| Loss: {loss_value:.4f}")
-   
+        
+           
+        validation_loss = 0.0
+        with torch.no_grad():
+            for images, targets in data_loader_validation:
+                images = [image.to(device) for image in images]
+                targets = [{k: v.to(device) for k, v in t.items()} for t in targets]
+                loss_dict = model(images, targets)
+                loss = sum(loss for loss in loss_dict.values())
+                validation_loss += loss.item()
+        
+        
         # Save metrics per epoch
         lr_step_sizes.append(optimizer.param_groups[0]['lr'])
         train_loss_list.append(sum(loss for loss in train_loss_per_epoch)/len(train_loss_per_epoch))
+        validation_loss /= len(data_loader_validation)
+        validation_losses.append(validation_loss)
+        
+        # Save the model if it has the best validation loss
+        if validation_loss < best_validation_loss and epoch > 10:
+            best_validation_loss = validation_loss
+            best_model_path = os.path.join(MODELPATH, 'best_model.pt')
+            torch.save(model.state_dict(), best_model_path)
+            #print(f"Best model saved at: {best_model_path}")
         
         # Change step size in optimizer
         lr_scheduler.step()
@@ -168,17 +202,17 @@ def train_landmarks(datapath, epochs, lr, device):
     ### SAVING RESULTS
     
     cwd = os.getcwd()
-    MODELPATH = cwd + "/landmark_models/model1/"
+    MODELPATH = cwd + "/landmark_models/"
 
     if not os.path.exists(MODELPATH):
         os.makedirs(MODELPATH)
         
-    dict = {'training_loss': train_loss_list, 'lr_step_size': lr_step_sizes}
+    dict = {'training_loss': train_loss_list, 'validation_loss': validation_losses, 'lr_step_size': lr_step_sizes}
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
-    torch.save(model.state_dict(), MODELPATH + "model1.pt")
-    print("Model is saved at:" + MODELPATH + "model1.pt")
+    torch.save(model.state_dict(), MODELPATH + "best_model.pt")
+    print("Model is saved at:" + MODELPATH + "best_model.pt")
 
 def train(datapath, epochs, lr, device):
     
@@ -189,7 +223,7 @@ def train(datapath, epochs, lr, device):
     if not os.path.exists(MODELPATH):
         os.makedirs(MODELPATH)
     
-    dataset_training, dataset_validation, dataset_test = make_datasets(datapath)
+    dataset_training, dataset_validation, dataset_test = make_datasets(datapath, "salmon")
     
     # Random seed for reproducibility
     g = torch.manual_seed(0)
@@ -320,7 +354,7 @@ def test(datapath, modelpath, device):
     model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
     model.eval().to(device)
     
-    dataset_training, dataset_validation, dataset_test = make_datasets(datapath)
+    dataset_training, dataset_validation, dataset_test = make_datasets(datapath, "salmon")
     
     # Random seed for reproducibility
     g = torch.manual_seed(0)
@@ -354,7 +388,7 @@ def test(datapath, modelpath, device):
         
     pprint(metrics.compute())
     
-    metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/models/newmodel/metrics.txt"
+    metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/test_metrics.txt"
     
     with open(metrics_path, "w") as f:
         pprint(metrics, stream=f)
