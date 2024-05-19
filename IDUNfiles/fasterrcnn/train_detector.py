@@ -98,6 +98,9 @@ def make_datasets(datapath, task):
 
 def train_landmarks(datapath, epochs, lr, device):
     
+    cwd = os.getcwd()
+    MODELPATH = cwd + "/landmark_models/"
+    
     dataset_training, dataset_validation, dataset_test = make_datasets(datapath, "landmarks")
     
      # Random seed for reproducibility
@@ -200,9 +203,6 @@ def train_landmarks(datapath, epochs, lr, device):
 
 
     ### SAVING RESULTS
-    
-    cwd = os.getcwd()
-    MODELPATH = cwd + "/landmark_models/"
 
     if not os.path.exists(MODELPATH):
         os.makedirs(MODELPATH)
