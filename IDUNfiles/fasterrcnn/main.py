@@ -40,7 +40,7 @@ def main():
                 datapath = '/cluster/home/magnuwii/Helfisk_Deteksjonssett/'
                 train_detector(datapath, epochs, lr, device)
             if task == 'landmarks':
-                datapath = '/cluster/home/magnuwii/Helfisk_Landmark_Deteksjonssett_Trening/'
+                datapath = '/cluster/home/magnuwii/Laks_kroppsdeler_Deteksjonssett/'
                 train_landmarks(datapath, epochs, lr, device)
                 
         else:
