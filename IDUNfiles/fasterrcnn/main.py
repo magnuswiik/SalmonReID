@@ -61,9 +61,14 @@ def main():
             modelpath = '/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/landmark_models/model1/model1.pt'
             inference_landmark(datapath, modelpath, device)'''
             
-            datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Laks_Deteksjonssett/"
-            modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/best_model.pt"
-            test_detector(datapath, modelpath, device)
+            if task == "salmon":
+                datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Laks_Deteksjonssett/"
+                modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/best_model.pt"
+            if task == "landmarks":
+                datapath = "/Users/magnuswiik/prosjektoppgave_data/Masteroppgave_data/Laks_kroppsdeler_Deteksjonssett/"
+                modelpath = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/bodypartdetection/best_model.pt"
+
+            test_detector(datapath, modelpath, device, task)
 
 if __name__ == "__main__":
     main()

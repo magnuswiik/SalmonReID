@@ -9,7 +9,6 @@ import numpy as np
 from SalmonDataset import SalmonDataset
 from LandmarksDataset import LandmarksDataset
 import torchvision
-from torchvision.ops import nms
 from torchvision.models.detection.faster_rcnn import FastRCNNPredictor, FasterRCNN_ResNet50_FPN_Weights, FasterRCNN_MobileNet_V3_Large_FPN_Weights
 plt.style.use('ggplot')
 from torchmetrics.detection.mean_ap import MeanAveragePrecision
@@ -344,17 +343,110 @@ def train(datapath, epochs, lr, device):
     df = pd.DataFrame(dict)
     df.to_csv(MODELPATH + 'metrics.csv', index=False)
 
+def visualize_false_predictions(images, targets, predictions):
+    
+    num_cols = 2
+    num_rows = 2
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(4, 4))
+    axes = axes.flatten()
+    
+    for ax, image, target, prediction in zip(axes, images, targets, predictions):
+        
+        image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+        
+        ax.imshow(image, aspect='auto')
+        ax.axis('off')
+        
+        targ_label = target['labels']
+        targ_box = target['boxes']
+        
+        x1 = float(targ_box[0][0])
+        y1 = float(targ_box[0][1])
+        x2 = float(targ_box[0][2])
+        y2 = float(targ_box[0][3])
+        
+        rect = plt.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=2, edgecolor='lightgreen', facecolor='none')
+        ax.add_patch(rect)
+            
+        pred_labels = prediction['labels']
+        pred_boxes = prediction['boxes']
+        pred_scores = prediction['scores']
+        
+        for label, box, score in zip(pred_labels, pred_boxes, pred_scores):
+            
+            x1 = float(box[0])
+            y1 = float(box[1])
+            x2 = float(box[2])
+            y2 = float(box[3])
+            
+            # Plotting rectangle
+            rect = plt.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1.5, edgecolor='red', facecolor='none')
+            ax.add_patch(rect)
+            ax.text(x1, y1 - 10, f'salmon:{round(score.item(), 3)}', color='white', fontsize=12, fontweight='bold')
+    
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.show()
 
-def test(datapath, modelpath, device):
+def calculate_iou(boxA, boxB):
+    # Determine the (x, y)-coordinates of the intersection rectangle
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
     
-    classes = {0: 'background',
-               1: 'salmon'}
+    # Compute the area of intersection rectangle
+    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
     
-    model = get_detection_model(num_classes=2)
+    # Compute the area of both the prediction and ground-truth rectangles
+    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+    
+    # Compute the intersection over union by taking the intersection area and dividing it by the sum of prediction + ground-truth areas - the intersection area
+    iou = interArea / float(boxAArea + boxBArea - interArea)
+    
+    return iou
+
+
+def failed_prediction_salmondet(target, predictions):
+    
+    targ_box = target['boxes'].squeeze().tolist()
+    
+    if len(targ_box) == 4:
+    
+        pred_scores = predictions['scores'].tolist()
+        pred_boxes = predictions['boxes']
+        
+        index_highconf = pred_scores.index(max(pred_scores))
+        
+        most_conf_predbox = pred_boxes[index_highconf].tolist()
+    else:
+        return False
+        
+    iou = calculate_iou(targ_box, most_conf_predbox)
+    
+    fail = iou < 0.7
+    if fail:
+        
+        print('geirgni')
+        return True
+    else:
+        return False
+
+
+def test(datapath, modelpath, device, task):
+    
+    if task == "salmon":
+        num_classes = 2
+        metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/test_metrics.txt"
+    if task == "landmarks":
+        num_classes = 6
+        metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/bodypartdetection/test_metrics.txt"
+    
+    model = get_detection_model(num_classes)
     model.load_state_dict(torch.load(modelpath, map_location=torch.device('cpu')))
     model.eval().to(device)
     
-    dataset_training, dataset_validation, dataset_test = make_datasets(datapath, "salmon")
+    dataset_training, dataset_validation, dataset_test = make_datasets(datapath, task)
     
     # Random seed for reproducibility
     g = torch.manual_seed(0)
@@ -373,6 +465,10 @@ def test(datapath, modelpath, device):
     targets_total = []
     preds_total = []
     
+    failed_images = []
+    failed_predictions = []
+    failed_targets = []
+    
     metrics = MeanAveragePrecision(iou_type="bbox")
 
     for i, data in enumerate(prog_bar):
@@ -381,16 +477,21 @@ def test(datapath, modelpath, device):
         
         images = list(image.to(device) for image in images)
         targets = [{k: v.to(device) for k, v in t.items()} for t in targets]  # Move target tensors to the same device
+        
         with torch.no_grad():
             preds = model(images)
         
-        metrics.update(preds, targets)
+        target_class = targets[0]['labels'].numpy()
+        pred_class = preds[0]['labels'].numpy()
         
-    pprint(metrics.compute())
+        utils.visualize_preds(task, images[0], preds[0], targets[0])
+        
+        metrics.update(preds, targets)
     
-    metrics_path = "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/salmondetection/test_metrics.txt"
+    metrics = metrics.compute()
+    pprint(metrics)
     
     with open(metrics_path, "w") as f:
         pprint(metrics, stream=f)
 
-    #utils.visualize_preds(images, preds)
+    

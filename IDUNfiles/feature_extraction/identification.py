@@ -1,14 +1,18 @@
 import torch
+from evaluate import calc_TPR_and_FPR
 from torchvision import transforms
 from torch.nn import TripletMarginLoss, CrossEntropyLoss
-from feature_extraction import collate_fn, get_resnet101_noclslayer, train_SVM, test_SVM, predict_features, create_results_folder, save_summary, analyze_data_tsne, explain_extractor, train_closedset, test_closedset, get_resnet101_withclslayer
+from feature_extraction import collate_fn, get_resnet101_noclslayer, train_SVM, test_SVM, predict_features, create_results_folder, save_summary, analyze_data_tsne, explain_extractor, train_closedset, test_closedset, get_resnet101_withclslayer, plot_explained_individuals
 from torchvision.models import ResNet101_Weights
 from ReidentificationDataset import ReidentificationDataset
 from sklearn.svm import SVC
-import os
+from sklearn.metrics import roc_curve, accuracy_score, auc
+import os, json
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.preprocessing import LabelBinarizer
+from sklearn.metrics import RocCurveDisplay
 
 def triplet_training_parameters_old():
     ''''epochs': 5,
@@ -141,8 +145,7 @@ def visualize_dataloader(bodypart, num_cols, dataloader):
     plt.subplots_adjust(wspace=0, hspace=0)
     plt.show()
     
-    fig.savefig('tailfin_dataset_test.png')
-        
+    fig.savefig('tailfin_dataset_test.png')     
               
 def dataloaders(bodypart, hyperparameters, approach):
     
@@ -287,6 +290,143 @@ def train_model(model, train_loader, validation_loader, hyperparameters, device,
     
     train_closedset(model, criterion, optimizer, scheduler, train_loader, validation_loader, EPOCHS, hyperparameters, device, folder)
 
+def roc_models(bodyparts, hyperparameters, modelpaths, APPROACH):
+    accuracies = []
+
+    plt.figure(figsize=(8, 6))
+    
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # Colors for bars, you can add more if needed
+    
+    
+    for i, bp in enumerate(bodyparts):
+        hyperparameters['bodypart'] = bp
+        BODYPART = hyperparameters['bodypart']
+        
+        train_loader, validation_loader, test_loader, device = dataloaders(BODYPART, hyperparameters, APPROACH)
+    
+        print('device:', device)
+        
+        model_withcls = get_resnet101_withclslayer(ResNet101_Weights)
+        model_withcls.to(device)
+        state_dict = torch.load(modelpaths[i], map_location=torch.device('cpu'))
+        model_withcls.load_state_dict(state_dict)
+        model_nocls = get_resnet101_noclslayer(ResNet101_Weights)
+        
+        #best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
+        
+        predictions, targets, probabilities, corrects = test_closedset(model_withcls, test_loader, device)
+        
+        accuracy = accuracy_score(predictions, targets)
+        accuracies.append(accuracy)
+        
+        y_test = np.array(corrects)
+        scores = np.array(probabilities)
+
+        # Binarize the output
+        map_individuals = {3: 0, 5: 1, 7: 2, 9: 3, 10: 4, 17: 5, 19: 6, 20: 7}
+        mapped_y_test = [map_individuals[label] for label in y_test]
+        y_train = train_loader.sampler.data_source.targets
+        mapped_y_train = [map_individuals[label] for label in y_train]
+        label_binarizer = LabelBinarizer().fit(mapped_y_train)
+        y_onehot_test = label_binarizer.transform(mapped_y_test)
+        
+
+        fpr, tpr, _ = roc_curve(y_onehot_test.ravel(), scores.ravel())
+        roc_auc = auc(fpr, tpr)
+        
+        plt.plot(fpr, tpr, lw=2, color=colors[i], label=f'ROC curve of {bp} (area = {roc_auc:0.2f})')
+
+    plt.plot([0, 1], [0, 1], 'k--', lw=2)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic for Multiclass (One-vs-Rest)')
+    plt.legend(loc="lower right")
+    plt.grid(True)
+    plt.show()
+
+def plot_accuracies(bodyparts, hyperparameters, modelpaths, APPROACH):
+    
+    # Determine the number of required subplots
+    num_plots = len(bodyparts)
+
+    # Calculate the number of rows and columns required
+    num_rows = (num_plots - 1) // 3 + 1
+    num_cols = min(num_plots, 3)
+
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(12, 9))
+    
+    # Flatten the axes array if it's more than 1D
+    if num_plots == 1:
+        axes = np.array([axes])
+
+    axes = axes.flatten()
+
+    width = 0.5  # Width of the bars
+    colors = plt.rcParams['axes.prop_cycle'].by_key()['color']  # Colors for bars, you can add more if needed
+    
+    x = np.arange(8)  # Adjusting x positions for bars
+    
+    for i, bp in enumerate(bodyparts):
+        
+        train_loader, validation_loader, test_loader, device = dataloaders(bp, hyperparameters, APPROACH)
+    
+        print('device:', device)
+        
+        model_withcls = get_resnet101_withclslayer(ResNet101_Weights)
+        model_withcls.to(device)
+        state_dict = torch.load(modelpaths[i], map_location=torch.device('cpu'))
+        model_withcls.load_state_dict(state_dict)
+        
+        #best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
+        
+        predictions, targets, probabilities, corrects = test_closedset(model_withcls, test_loader, device, bp)
+
+        correct_counts = dict()
+        total_counts = dict()
+        
+        # Iterate through predictions and targets
+        for pred, target in zip(predictions, targets):
+            if not give_name(target) in total_counts:
+                total_counts[give_name(target)] = 0
+            total_counts[give_name(target)] += 1
+            
+            if pred == target:
+                if not give_name(target) in correct_counts:
+                    correct_counts[give_name(target)] = 0
+                correct_counts[give_name(target)] += 1
+        
+        # Compute accuracy per class
+        accuracy_per_class = {cls: correct_counts[cls] / total_counts[cls] for cls in total_counts}
+        total_accuracy = sum(accuracy_per_class.values())/len(accuracy_per_class)
+        
+        axes[i].bar(x, accuracy_per_class.values(), width, label=bp, color=colors[i])
+        axes[i].bar(8, total_accuracy, width, color='grey')
+        axes[i].text(8, total_accuracy + 0.05, f'{total_accuracy:.2f}', ha='center')
+        axes[i].set_ylabel('Accuracy')
+        axes[i].set_ylim(0, 1.1)
+        axes[i].axhline(y=1, color='gray', linestyle='--')
+        #axes[i].set_title('Accuracy by Fish Species and Body Part')
+        axes[i].set_xticks(np.arange(9))
+        labels = list(accuracy_per_class.keys())
+        labels.append('Avg. Accuracy')
+        axes[i].set_xticklabels(labels, rotation=45, ha='right')  # Rotating labels for better readability
+        axes[i].legend()
+        plt.subplots_adjust(wspace=0.3, hspace=0.4)
+    fig.delaxes(axes[num_plots])
+        
+        
+    
+    print('yo')
+
+    # Hide the empty plots
+    for j in range(num_plots, len(axes)):
+        axes[j].axis('off')
+
+    fig.tight_layout()
+
+    plt.show()
 
 def main():
     
@@ -344,29 +484,69 @@ def main():
     if APPROACH == 2:
         hyperparameters = hyperparameters_AP2
     
-    BODYPART = hyperparameters['bodypart']
     
-    train_loader, validation_loader, test_loader, device = dataloaders(BODYPART, hyperparameters, APPROACH)
-    
-    print('device:', device)
     
     #folder = results_folder()
+    
+    bodyparts = ['thorax', 'dorsalfin', 'pectoralfin', 'eyeregion', 'tailfin']
+    
+    modelpaths = ["/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_13-13-25/best_model.pt",
+                  "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_13-45-11/best_model.pt",
+                  "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_14-05-09/best_model.pt",
+                  "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_13-38-49/best_model.pt",
+                  "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_14-15-06/best_model.pt"]
 
-    model_withcls = get_resnet101_withclslayer(ResNet101_Weights)
-    model_withcls.to(device)
-    state_dict = torch.load("/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/results/IDUN/featuremodel_2024-05-03_14-15-06/best_model.pt", map_location=torch.device('cpu'))
-    model_withcls.load_state_dict(state_dict)
-    model_nocls = get_resnet101_noclslayer(ResNet101_Weights)
+    accuracies = []
     
-    #best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
-    
-    #accuracy, report = test_closedset(model_withcls, test_loader, device)
+    tot_targets = [[],[],[],[],[]]
+    tot_predictions = [[],[],[],[],[]]
+    bodyparts_titles = ['Thorax', 'Dorsal fin', 'Pectoral fin', 'Eye', 'Caudal fin']
+
+
+    for i in range(5):
+        hyperparameters_AP2['bodypart'] = bodyparts[i]
+        BODYPART = hyperparameters['bodypart']
+        MODELPATH = modelpaths[i]
+        
+        train_loader, validation_loader, test_loader, device = dataloaders(BODYPART, hyperparameters, APPROACH)
+
+        print('device:', device)
+        
+        model_withcls = get_resnet101_withclslayer(ResNet101_Weights)
+        model_withcls.to(device)
+        state_dict = torch.load(MODELPATH, map_location=torch.device('cpu'))
+        model_withcls.load_state_dict(state_dict)
+        model_nocls = get_resnet101_noclslayer(ResNet101_Weights)
+        
+        #best_model_path = train_model(model_withcls, train_loader, validation_loader, hyperparameters, device, folder)
+        
+        if bodyparts_titles[i] == 'Thorax':
+            predictions, targets, probabilities, corrects = test_closedset(model_withcls, test_loader, device, bodyparts_titles[i])
+            
+            tot_predictions[i] = predictions
+            tot_targets[i] = targets
+        
+    try:
+        with open('predictions_targets_step3_test.json', 'w') as f:
+            json.dump({'predictions': tot_predictions, 'targets': tot_targets}, f)
+    except Exception as e:
+        print(f"An error occurred while writing to the file: {e}")
+        
+        #accuracy = accuracy_score(predictions, targets)
+        #accuracies.append(accuracy)
+        
+        #plot_accuracies(bodyparts, hyperparameters, modelpaths, APPROACH)
+        #roc_models(bodyparts, hyperparameters, modelpaths, APPROACH)
+            
+    print("yo")
     
     #df_train, df_test = predict_features(model, train_loader, test_loader, BODYPART, device)
     
     #analyze_features(df_train, df_test)
     
-    visualize_dataloader('thorax', 10, test_loader)
+    #visualize_dataloader('thorax', 10, test_loader)
+    
+    #plot_explained_individuals(model_withcls, test_loader)
     
     #explain_extractor(model_withcls, 19, train_loader, test_loader)
 

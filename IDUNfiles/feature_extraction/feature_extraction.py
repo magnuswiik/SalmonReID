@@ -16,7 +16,7 @@ from WholeFishReidentificationDataset import WholeFishReidentificationDataset
 from ClosedSetReidentificationDataset import ClosedSetReidentificationDataset
 from tqdm.auto import tqdm
 from sklearn.manifold import TSNE
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 import captum
 from captum.attr import IntegratedGradients, NoiseTunnel
@@ -26,6 +26,7 @@ from PIL import Image
 import random
 from datetime import datetime
 from sklearn.svm import SVC
+from  matplotlib.colors import LinearSegmentedColormap
 
 def create_results_folder(base_path, prefix="featuremodel"):
     # Create a timestamp for uniqueness
@@ -350,16 +351,25 @@ def train_closedset(model, criterion, optimizer, scheduler, train_loader, valida
     df.to_csv(os.path.join(folder, 'metrics.csv'), index=False)
     
     return best_model_path
-        
-def test_closedset(model, test_loader, device):
+
+def give_name(target):
+    names = {3:'Novak', 5:'Jannik', 7:'Casper', 9:'Holger', 10:'Roger', 17:'Alexander', 19:'Stefanos', 20:'Daniil'}
+    return names[target]
+     
+def test_closedset(model, test_loader, device, bodypart):
     
+    cmap=LinearSegmentedColormap.from_list('rg',["darkred", "w", "darkgreen"], N=256) 
+    target_names = ['Novak', 'Jannik', 'Casper', 'Holger', 'Roger', 'Alexander', 'Stefanos', 'Daniil']
     map_individuals = {0:3, 1:5, 2:7, 3:9, 4:10, 5:17, 6:19, 7:20}
+    map_individuals_reversed = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}
     
     model.to(device)
     model.eval()
     
     prog_bar = tqdm(test_loader, total=len(test_loader))
     
+    probabilities_list = []
+    correct_list = []
     predictions_list = []
     targets_list = []
     
@@ -374,17 +384,51 @@ def test_closedset(model, test_loader, device):
             #visualize_batch(image)
 
             output = model(image)
-            _, pred = torch.max(output, 1)
+            probs = torch.nn.functional.softmax(output, dim=1)
+            p, pred = torch.max(output, 1)
+            
+            probabilities= probs.squeeze(0).tolist()
+            probabilities_list.append(probabilities)
+            correct_list.append(target.item())
             predictions_list.append(map_individuals[pred.item()])
             targets_list.append(target.item())
             
+            pred_it = pred.item()
+            target_it = target.item()
+            pred_prob = round(probabilities[pred_it], 3)
+            target_prob = round(probabilities[map_individuals_reversed[target_it]], 3)
+                        
+            if (give_name(map_individuals[pred_it]) != give_name(target_it)):# and ((give_name(map_individuals[pred_it]) == "Holger") or (give_name(map_individuals[pred_it]) == "Stefanos")):
+                
+                image_out = image[0].cpu().detach().numpy().transpose((1, 2, 0))
+                
+                fig, ax = plt.subplots()
+                target_ex = torch.tensor(map_individuals_reversed[target.item()])
+                explained_image = explain_image(model, image, target_ex)
+                
+                ax.imshow(explained_image)
+                ax.axis('off')
+                ax.set_title(f'{bodypart}')
+                plt.figtext(0.5, 0.05, f'Predicted: {give_name(map_individuals[pred_it])}({pred_prob}). True: {give_name(target_it)}({target_prob})', horizontalalignment='center', fontsize=12)
+                plt.savefig(f'/Users/magnuswiik/Documents/masteroppgave figurer/step3/predictions/Predicted({give_name(map_individuals[pred_it])})True({give_name(target_it)}{i})', dpi=600, transparent=True)
+                        
     # Calculate accuracy
     accuracy = accuracy_score(targets_list, predictions_list)
     
     # Generate classification report
     report = classification_report(targets_list, predictions_list)
     
-    return accuracy, report
+    '''cm = confusion_matrix(targets_list, predictions_list)
+    cmn = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+    accuracy = np.trace(cm) / np.sum(cm)
+    fig, ax = plt.subplots(figsize=(15,8))
+    sns.heatmap(cmn, cmap=cmap, annot=True, fmt='.2f', xticklabels=target_names, yticklabels=target_names)#, xticklabels=target_names, yticklabels=target_names)
+    plt.title(f'Test set results for Step 3. Body-part model: {bodypart}. Accuracy={round(accuracy, 3)}')
+    plt.ylabel('Actual')
+    plt.xlabel('Predicted')
+    plt.show()'''
+    
+    return predictions_list, targets_list, probabilities_list, correct_list
     
 def predict_features(model, train_loader, test_loader, landmark, device):
     
@@ -606,6 +650,61 @@ def annotate_axes(ax, text, c, fontsize=12):
     ax.text(0.85, 0.1, text, transform=ax.transAxes,
             ha="left", va="top", fontsize=fontsize, color=c)
     
+def explain_image(model, image, target):
+    
+    integrated_gradients = IntegratedGradients(model)
+    attributions_ig = integrated_gradients.attribute(image, target=target, n_steps=50)
+    
+    image = np.transpose(image.squeeze().cpu().detach().numpy(), (1,2,0))
+    attributions_np = np.transpose(attributions_ig.squeeze().detach().cpu().numpy(), (1, 2, 0))
+    
+    attributions_np[attributions_np < 0] = 0
+    attributions_np = (attributions_np - attributions_np.min()) / (attributions_np.max() - attributions_np.min())
+    attributions_np = np.clip(attributions_np*5, 0, 1)
+    
+    # Overlay the image with the attributions
+    attr_np = attributions_np + 1
+    overlayed_image = np.clip(image * attr_np, 0, 1)
+
+    return overlayed_image
+
+def plot_explained_individuals(model, data_loader):
+    
+    map_individuals = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}
+    
+    num_cols = 8
+    num_rows = 1
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(18, 1))
+    
+    individuals = []
+    images = []
+    
+    iter_test_loader = iter(data_loader)
+    
+    for i in range(len(data_loader.sampler)):
+        image, target = next(iter_test_loader)
+        image = image[0].unsqueeze(0)
+        target = target[0].item()
+        
+        if target not in individuals:
+            
+            explained_image = explain_image(model, image, map_individuals[target])
+            
+            images.append(explained_image)
+            individuals.append(target)
+    
+    axes = axes.flatten()
+    
+    for i, img in enumerate(images):
+        axes[i].imshow(img, aspect=1)
+        axes[i].axis('off')
+        #annotate_axes(axes[i], str(i//3 + 1), 'yellow')
+
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.show()
+    
+    fig.savefig('individuals_explained_eye.png')
+     
 def explain_extractor(model, individual, train_loader, test_loader):
     
     map_individuals = {3:0, 5:1, 7:2, 9:3, 10:4, 17:5, 19:6, 20:7}

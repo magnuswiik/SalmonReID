@@ -11,8 +11,8 @@ class SalmonDataset(torch.utils.data.Dataset):
         # load all image files, sorting them to
         # ensure that they are aligned
         
-        self.images = [file for file in sorted(os.listdir(os.path.join(root, "Images"))) if file.endswith(('.jpg', '.jpeg', '.png'))]
-        self.annots = [file for file in sorted(os.listdir(os.path.join(root, "Boxes"))) if file.endswith('.json')]
+        self.images = [file for file in sorted(os.listdir(os.path.join(root, "pipeline_images"))) if file.endswith(('.jpg', '.jpeg', '.png'))]
+        self.annots = [file for file in sorted(os.listdir(os.path.join(root, "pipeline_annots"))) if file.endswith('.json')]
     
     def __getitem__(self, idx):
         # load images and masks
@@ -50,6 +50,7 @@ class SalmonDataset(torch.utils.data.Dataset):
         target["boxes"] = boxes_flattened
         target["labels"] = labels
         target["image_id"] = torch.tensor(idx)
+        target["individual"] = torch.tensor([shape['group_id'] for shape in shapes])
         target["area"] = (boxes_flattened[:,2]-boxes_flattened[:,0])*(boxes_flattened[:,3]-boxes_flattened[:,1])
         target["iscrowd"] = torch.zeros((num_objs,), dtype=torch.int64)
 
