@@ -11,10 +11,10 @@
             "program": "/Users/magnuswiik/Documents/NTNU/5.klasse/Masteroppgave/masterthesis/IDUNfiles/fasterrcnn/main.py",
             "console": "integratedTerminal",
             "args": ["--cloud", "0",
-                     "--task", "landmarks",
+                     "--task", "bodyparts",
                      "--lr", "0.005",
-                     "--epochs", "100",
-                     "--train", "1"]
+                     "--epochs", "250",
+                     "--train", "0"]
         }
     ]
 }
